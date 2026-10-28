@@ -1,0 +1,203 @@
+{
+  "formatVersion": 1,
+  "type": "HycarPerdStack",
+  "stack": {
+    "id": "stack-001",
+    "name": "はじめてのスタック",
+    "width": 320,
+    "height": 480,
+    "script": "on openCard\n  put \"カード \" & the number of this card & \" / \" & the number of cards\nend openCard"
+  },
+  "backgrounds": [
+    {
+      "id": "bg-001",
+      "name": "標準背景",
+      "parts": [
+        {
+          "id": "btn-bg-prev",
+          "type": "button",
+          "name": "← 前へ",
+          "left": 16,
+          "top": 420,
+          "width": 136,
+          "height": 44,
+          "text": "",
+          "style": "shadow",
+          "visible": true,
+          "lockText": false,
+          "sharedText": false,
+          "script": "on mouseUp\n  go prev card\nend mouseUp"
+        },
+        {
+          "id": "btn-bg-next",
+          "type": "button",
+          "name": "次へ →",
+          "left": 168,
+          "top": 420,
+          "width": 136,
+          "height": 44,
+          "text": "",
+          "style": "shadow",
+          "visible": true,
+          "lockText": false,
+          "sharedText": false,
+          "script": "on mouseUp\n  go next card\nend mouseUp"
+        }
+      ],
+      "script": "",
+      "content": ""
+    }
+  ],
+  "cards": [
+    {
+      "id": "card-001",
+      "name": "ホーム",
+      "backgroundId": "bg-001",
+      "content": "HycarPerdへようこそ。\nボタンを押すとスクリプトが動きます。\n下の2つは背景のボタンです。",
+      "script": "",
+      "parts": [
+        {
+          "id": "fld-memo",
+          "type": "field",
+          "name": "メモ",
+          "left": 16,
+          "top": 120,
+          "width": 288,
+          "height": 140,
+          "text": "ここには自由に書き込めます。",
+          "style": "rectangle",
+          "visible": true,
+          "lockText": false,
+          "script": "",
+          "sharedText": false
+        },
+        {
+          "id": "btn-hello",
+          "type": "button",
+          "name": "あいさつ",
+          "left": 16,
+          "top": 284,
+          "width": 288,
+          "height": 48,
+          "text": "",
+          "style": "roundrect",
+          "visible": true,
+          "lockText": false,
+          "script": "on mouseUp\n  answer \"こんにちは！\" with \"OK\"\nend mouseUp",
+          "sharedText": false
+        }
+      ],
+      "bgText": {}
+    },
+    {
+      "id": "card-002",
+      "name": "カウンター",
+      "backgroundId": "bg-001",
+      "content": "ボタンを押すと数が増えます。\n10回ごとにビープが鳴ります。",
+      "script": "",
+      "parts": [
+        {
+          "id": "fld-count",
+          "type": "field",
+          "name": "count",
+          "left": 100,
+          "top": 100,
+          "width": 120,
+          "height": 60,
+          "text": "0",
+          "style": "rectangle",
+          "visible": true,
+          "lockText": true,
+          "script": "",
+          "sharedText": false
+        },
+        {
+          "id": "btn-plus",
+          "type": "button",
+          "name": "+1",
+          "left": 16,
+          "top": 190,
+          "width": 136,
+          "height": 56,
+          "text": "",
+          "style": "roundrect",
+          "visible": true,
+          "lockText": false,
+          "script": "on mouseUp\n  add 1 to field \"count\"\n  if field \"count\" mod 10 = 0 then beep\nend mouseUp",
+          "sharedText": false
+        },
+        {
+          "id": "btn-reset",
+          "type": "button",
+          "name": "リセット",
+          "left": 168,
+          "top": 190,
+          "width": 136,
+          "height": 56,
+          "text": "",
+          "style": "rectangle",
+          "visible": true,
+          "lockText": false,
+          "script": "on mouseUp\n  put 0 into field \"count\"\nend mouseUp",
+          "sharedText": false
+        }
+      ],
+      "bgText": {}
+    },
+    {
+      "id": "card-003",
+      "name": "なまえ",
+      "backgroundId": "bg-001",
+      "content": "名前を入れると、あいさつします。",
+      "script": "",
+      "parts": [
+        {
+          "id": "btn-ask",
+          "type": "button",
+          "name": "名前を聞く",
+          "left": 16,
+          "top": 72,
+          "width": 288,
+          "height": 48,
+          "text": "",
+          "style": "roundrect",
+          "visible": true,
+          "lockText": false,
+          "script": "on mouseUp\n  ask \"お名前は？\" with \"ゲスト\"\n  if it is empty then exit mouseUp\n  put \"こんにちは、\" & it & \"さん！\" into field \"msg\"\nend mouseUp",
+          "sharedText": false
+        },
+        {
+          "id": "fld-msg",
+          "type": "field",
+          "name": "msg",
+          "left": 16,
+          "top": 140,
+          "width": 288,
+          "height": 80,
+          "text": "",
+          "style": "rectangle",
+          "visible": true,
+          "lockText": true,
+          "script": "",
+          "sharedText": false
+        },
+        {
+          "id": "btn-first",
+          "type": "button",
+          "name": "最初へ",
+          "left": 92,
+          "top": 360,
+          "width": 136,
+          "height": 44,
+          "text": "",
+          "style": "shadow",
+          "visible": true,
+          "lockText": false,
+          "script": "on mouseUp\n  go first card\nend mouseUp",
+          "sharedText": false
+        }
+      ],
+      "bgText": {}
+    }
+  ]
+}
