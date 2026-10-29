@@ -1,6 +1,6 @@
-import { MIN_PART_SIZE, xFieldText, xSetFieldText } from "../storage/StackIO.js";
-import { xCheckScript } from "../hypertalk/Parser.js";
-import { xPlaySound, xSoundOptions } from "./Sound.js";
+import { MIN_PART_SIZE, PART_TEXT_SIZES, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
+import { fsCheckScript } from "../hypertalk/Parser.js";
+import { fsPlaySound, fsSoundOptions } from "./Sound.js";
 
 // スクリプトで visual effect を指定しなかったときの効果。
 const EFFECT_OPTIONS = [
@@ -8,6 +8,9 @@ const EFFECT_OPTIONS = [
   ["dissolve", "ディゾルブ（点々に崩れる）"],
   ["none", "なし"]
 ];
+
+// カードの効果。空ならスタックの効果に従う。
+const CARD_EFFECT_OPTIONS = [["", "スタックの設定に従う"], ...EFFECT_OPTIONS];
 
 const STYLE_OPTIONS = {
   button: [
@@ -68,8 +71,8 @@ export class Inspector {
 
     if (xPart.type === "field") {
       const xLabel = xIsBackground && !xPart.sharedText ? "テキスト（このカードの内容）" : "テキスト";
-      xTextInput = this.xTextArea(xLabel, xFieldText(xPart, xCard, xIsBackground), "field-text-input", (xValue) => {
-        xSetFieldText(xPart, xCard, xIsBackground, xValue);
+      xTextInput = this.xTextArea(xLabel, fsFieldText(xPart, xCard, xIsBackground), "field-text-input", (xValue) => {
+        fsSetFieldText(xPart, xCard, xIsBackground, xValue);
         this.handlers.onChange(true);
       });
     }
@@ -78,6 +81,14 @@ export class Inspector {
       xPart.style = xValue;
       this.handlers.onChange(true);
     });
+
+    // スクリプトで選択肢にない大きさにしたときは、その大きさも選択肢に出す。
+    const xTextSizes = [...new Set([...PART_TEXT_SIZES, xPart.textSize])].sort((xA, xB) => xA - xB);
+    this.xSelect("文字の大きさ", xTextSizes.map((xSize) => [String(xSize), `${xSize} ドット`]),
+      String(xPart.textSize), (xValue) => {
+        xPart.textSize = Number(xValue);
+        this.handlers.onChange(true);
+      });
 
     this.xCheckbox("表示する", xPart.visible, (xValue) => {
       xPart.visible = xValue;
@@ -92,7 +103,7 @@ export class Inspector {
     }
 
     if (xPart.type === "button") {
-      this.xSoundSelect("押したときの音", [["", "なし"], ...xSoundOptions()], xPart.sound, (xValue) => {
+      this.xSoundSelect("押したときの音", [["", "なし"], ...fsSoundOptions()], xPart.sound, (xValue) => {
         xPart.sound = xValue;
         this.handlers.onChange(false);
       });
@@ -101,7 +112,7 @@ export class Inspector {
     if (xPart.type === "field" && xIsBackground) {
       this.xCheckbox("全カードで同じ文字にする", xPart.sharedText, (xValue) => {
         xPart.sharedText = xValue;
-        xTextInput.value = xFieldText(xPart, xCard, xIsBackground);
+        xTextInput.value = fsFieldText(xPart, xCard, xIsBackground);
         xTextInput.closest("label").firstChild.textContent = xValue ? "テキスト" : "テキスト（このカードの内容）";
         this.handlers.onChange(true);
       });
@@ -120,11 +131,16 @@ export class Inspector {
   }
 
   showCard(xCard) {
-    this.xStart("カード情報");
+    this.xStart("カード設定");
 
     this.xTextInput("カード名", xCard.name, (xValue) => {
       xCard.name = xValue;
       this.handlers.onChange(true);
+    });
+
+    this.xSelect("このカードへ移るときの効果", CARD_EFFECT_OPTIONS, xCard.effect, (xValue) => {
+      xCard.effect = xValue;
+      this.handlers.onChange(false);
     });
 
     this.xScriptInput("カードのスクリプト", xCard);
@@ -132,7 +148,7 @@ export class Inspector {
   }
 
   showBackground(xBackground) {
-    this.xStart("背景情報");
+    this.xStart("背景設定");
 
     this.xTextInput("背景名", xBackground.name, (xValue) => {
       xBackground.name = xValue;
@@ -146,19 +162,29 @@ export class Inspector {
   }
 
   showStack(xStack) {
-    this.xStart("スタック情報");
+    this.xStart("スタック設定");
 
     this.xTextInput("スタック名", xStack.stack.name, (xValue) => {
       xStack.stack.name = xValue;
       this.handlers.onChange(true);
     });
 
-    this.xSelect("カードの切り替え効果", EFFECT_OPTIONS, xStack.stack.effect, (xValue) => {
+    this.xTextInput("作者", xStack.stack.author, (xValue) => {
+      xStack.stack.author = xValue;
+      this.handlers.onChange(false);
+    });
+
+    this.xTextInput("ヴァージョン", xStack.stack.version, (xValue) => {
+      xStack.stack.version = xValue;
+      this.handlers.onChange(false);
+    });
+
+    this.xSelect("カードの切り替え効果（既定）", EFFECT_OPTIONS, xStack.stack.effect, (xValue) => {
       xStack.stack.effect = xValue;
       this.handlers.onChange(false);
     });
 
-    this.xSoundSelect("beep で鳴らす音", xSoundOptions(), xStack.stack.beepSound, (xValue) => {
+    this.xSoundSelect("beep で鳴らす音", fsSoundOptions(), xStack.stack.beepSound, (xValue) => {
       xStack.stack.beepSound = xValue;
       this.handlers.onChange(false);
     });
@@ -267,7 +293,7 @@ export class Inspector {
     const xAll = xOptions.some(([xName]) => xName === xValue) ? xOptions : [...xOptions, [xValue, xValue]];
 
     this.xSelect(xLabelText, xAll, xValue, (xName) => {
-      xPlaySound(xName);
+      fsPlaySound(xName);
       xOnChange(xName);
     });
   }
@@ -336,7 +362,7 @@ export class Inspector {
     xMessage.setAttribute("aria-live", "polite");
 
     const xShowCheck = () => {
-      const xError = xCheckScript(xInput.value);
+      const xError = fsCheckScript(xInput.value);
       xMessage.textContent = xError || "構文OK";
       xMessage.classList.toggle("is-error", Boolean(xError));
     };

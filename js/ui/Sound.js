@@ -10,21 +10,21 @@ const MIN_GAIN = 0.0001;
 // 音を足すときは、ここに項目を足す（将来、スタックに読み込んだ音もこの形で登録できる）。
 const SOUNDS = new Map();
 
-export function xRegisterSound(xName, xLabel, xPlay) {
+export const fsRegisterSound = (xName, xLabel, xPlay) => {
   SOUNDS.set(xName.toLowerCase(), { label: xLabel, play: xPlay });
-}
+};
 
 // 設定の選択肢に使う [名前, 表示名] の一覧。
-export function xSoundOptions() {
+export const fsSoundOptions = () => {
   return [...SOUNDS].map(([xName, xSound]) => [xName, xSound.label]);
-}
+};
 
-export function xHasSound(xName) {
+export const fsHasSound = (xName) => {
   return SOUNDS.has(String(xName).toLowerCase());
-}
+};
 
 // 鳴らした音の長さ（ミリ秒）を返す。音がない・鳴らせないときは 0。
-export function xPlaySound(xName) {
+export const fsPlaySound = (xName) => {
   const xSound = SOUNDS.get(String(xName).toLowerCase());
 
   if (!xSound) {
@@ -32,7 +32,7 @@ export function xPlaySound(xName) {
   }
 
   try {
-    const xAudio = xGetAudio();
+    const xAudio = fsGetAudio();
     const xOut = xAudio.createGain();
     xOut.gain.value = MASTER_GAIN;
     xOut.connect(xAudio.destination);
@@ -45,13 +45,13 @@ export function xPlaySound(xName) {
     // 音が出せない環境では何もしない。
     return 0;
   }
-}
+};
 
 // iPhoneなどは、画面に触れたときに一度音を有効にしないと、後から鳴らせない。
-export function xUnlockSound() {
+export const fsUnlockSound = () => {
   const xUnlock = () => {
     try {
-      const xAudio = xGetAudio();
+      const xAudio = fsGetAudio();
 
       if (xAudio.state === "suspended") {
         xAudio.resume();
@@ -64,9 +64,9 @@ export function xUnlockSound() {
   for (const xType of ["pointerdown", "keydown"]) {
     document.addEventListener(xType, xUnlock, { capture: true, passive: true });
   }
-}
+};
 
-function xGetAudio() {
+const fsGetAudio = () => {
   pAudio ??= new AudioContext();
 
   if (pAudio.state === "suspended") {
@@ -74,12 +74,12 @@ function xGetAudio() {
   }
 
   return pAudio;
-}
+};
 
 // ---- 音を組み立てる部品 ----
 
 // 1つの音。freq から to へ高さを変えながら、gain から消えていく。
-function xTone(xAudio, xOut, xStart, { type = "square", freq, to = freq, dur, gain = 0.2, attack = 0.005 }) {
+const fsTone = (xAudio, xOut, xStart, { type = "square", freq, to = freq, dur, gain = 0.2, attack = 0.005 }) => {
   const xOscillator = xAudio.createOscillator();
   const xGain = xAudio.createGain();
 
@@ -97,10 +97,10 @@ function xTone(xAudio, xOut, xStart, { type = "square", freq, to = freq, dur, ga
   xOscillator.start(xStart);
   xOscillator.stop(xStart + dur + 0.02);
   return xOscillator;
-}
+};
 
 // 雑音。高い音だけを通して「カチッ」を作る。
-function xNoise(xAudio, xOut, xStart, { dur, gain = 0.3, cutoff = 2000 }) {
+const fsNoise = (xAudio, xOut, xStart, { dur, gain = 0.3, cutoff = 2000 }) => {
   if (!pNoise || pNoise.sampleRate !== xAudio.sampleRate) {
     pNoise = xAudio.createBuffer(1, Math.round(xAudio.sampleRate * 0.25), xAudio.sampleRate);
     const xData = pNoise.getChannelData(0);
@@ -122,28 +122,28 @@ function xNoise(xAudio, xOut, xStart, { dur, gain = 0.3, cutoff = 2000 }) {
   xSource.connect(xFilter).connect(xGain).connect(xOut);
   xSource.start(xStart);
   xSource.stop(xStart + dur + 0.02);
-}
+};
 
 // ---- プリセット ----
 
-xRegisterSound("beep", "ピッ（beep）", (xAudio, xOut, xStart) => {
-  xTone(xAudio, xOut, xStart, { freq: 880, dur: 0.15, gain: 0.16, attack: 0.002 });
+fsRegisterSound("beep", "ピッ（beep）", (xAudio, xOut, xStart) => {
+  fsTone(xAudio, xOut, xStart, { freq: 880, dur: 0.15, gain: 0.16, attack: 0.002 });
   return 0.15;
 });
 
-xRegisterSound("click", "カチッ（click）", (xAudio, xOut, xStart) => {
-  xNoise(xAudio, xOut, xStart, { dur: 0.025, gain: 0.5, cutoff: 3000 });
-  xTone(xAudio, xOut, xStart, { type: "triangle", freq: 1800, to: 900, dur: 0.02, gain: 0.25, attack: 0.001 });
+fsRegisterSound("click", "カチッ（click）", (xAudio, xOut, xStart) => {
+  fsNoise(xAudio, xOut, xStart, { dur: 0.025, gain: 0.5, cutoff: 3000 });
+  fsTone(xAudio, xOut, xStart, { type: "triangle", freq: 1800, to: 900, dur: 0.02, gain: 0.25, attack: 0.001 });
   return 0.03;
 });
 
-xRegisterSound("pop", "ポン（pop）", (xAudio, xOut, xStart) => {
-  xTone(xAudio, xOut, xStart, { type: "sine", freq: 700, to: 180, dur: 0.1, gain: 0.6, attack: 0.002 });
+fsRegisterSound("pop", "ポン（pop）", (xAudio, xOut, xStart) => {
+  fsTone(xAudio, xOut, xStart, { type: "sine", freq: 700, to: 180, dur: 0.1, gain: 0.6, attack: 0.002 });
   return 0.1;
 });
 
-xRegisterSound("boing", "ビョーン（boing）", (xAudio, xOut, xStart) => {
-  const xOscillator = xTone(xAudio, xOut, xStart, { type: "triangle", freq: 140, to: 420, dur: 0.55, gain: 0.5 });
+fsRegisterSound("boing", "ビョーン（boing）", (xAudio, xOut, xStart) => {
+  const xOscillator = fsTone(xAudio, xOut, xStart, { type: "triangle", freq: 140, to: 420, dur: 0.55, gain: 0.5 });
   const xWobble = xAudio.createOscillator();
   const xDepth = xAudio.createGain();
 
@@ -157,31 +157,31 @@ xRegisterSound("boing", "ビョーン（boing）", (xAudio, xOut, xStart) => {
   return 0.55;
 });
 
-xRegisterSound("chime", "ピンポン（chime）", (xAudio, xOut, xStart) => {
-  xTone(xAudio, xOut, xStart, { type: "sine", freq: 1318.5, dur: 0.7, gain: 0.45 });
-  xTone(xAudio, xOut, xStart + 0.32, { type: "sine", freq: 1046.5, dur: 0.9, gain: 0.45 });
+fsRegisterSound("chime", "ピンポン（chime）", (xAudio, xOut, xStart) => {
+  fsTone(xAudio, xOut, xStart, { type: "sine", freq: 1318.5, dur: 0.7, gain: 0.45 });
+  fsTone(xAudio, xOut, xStart + 0.32, { type: "sine", freq: 1046.5, dur: 0.9, gain: 0.45 });
   return 1.22;
 });
 
-xRegisterSound("buzz", "ブブー（buzz）", (xAudio, xOut, xStart) => {
+fsRegisterSound("buzz", "ブブー（buzz）", (xAudio, xOut, xStart) => {
   for (const xOffset of [0, 0.24]) {
-    xTone(xAudio, xOut, xStart + xOffset, { type: "sawtooth", freq: 120, dur: 0.18, gain: 0.25, attack: 0.01 });
+    fsTone(xAudio, xOut, xStart + xOffset, { type: "sawtooth", freq: 120, dur: 0.18, gain: 0.25, attack: 0.01 });
   }
   return 0.42;
 });
 
-xRegisterSound("coin", "ピロン（coin）", (xAudio, xOut, xStart) => {
-  xTone(xAudio, xOut, xStart, { type: "triangle", freq: 1174.7, dur: 0.07, gain: 0.4, attack: 0.002 });
-  xTone(xAudio, xOut, xStart + 0.06, { type: "triangle", freq: 1568, to: 1760, dur: 0.35, gain: 0.4, attack: 0.002 });
+fsRegisterSound("coin", "ピロン（coin）", (xAudio, xOut, xStart) => {
+  fsTone(xAudio, xOut, xStart, { type: "triangle", freq: 1174.7, dur: 0.07, gain: 0.4, attack: 0.002 });
+  fsTone(xAudio, xOut, xStart + 0.06, { type: "triangle", freq: 1568, to: 1760, dur: 0.35, gain: 0.4, attack: 0.002 });
   return 0.41;
 });
 
-xRegisterSound("fanfare", "ファンファーレ（fanfare）", (xAudio, xOut, xStart) => {
+fsRegisterSound("fanfare", "ファンファーレ（fanfare）", (xAudio, xOut, xStart) => {
   const xNotes = [[523.3, 0, 0.12], [659.3, 0.12, 0.12], [784, 0.24, 0.12], [1046.5, 0.4, 0.5]];
 
   for (const [xFreq, xOffset, xDur] of xNotes) {
-    xTone(xAudio, xOut, xStart + xOffset, { freq: xFreq, dur: xDur, gain: 0.14, attack: 0.01 });
-    xTone(xAudio, xOut, xStart + xOffset, { type: "triangle", freq: xFreq / 2, dur: xDur, gain: 0.2, attack: 0.01 });
+    fsTone(xAudio, xOut, xStart + xOffset, { freq: xFreq, dur: xDur, gain: 0.14, attack: 0.01 });
+    fsTone(xAudio, xOut, xStart + xOffset, { type: "triangle", freq: xFreq / 2, dur: xDur, gain: 0.2, attack: 0.01 });
   }
   return 0.9;
 });

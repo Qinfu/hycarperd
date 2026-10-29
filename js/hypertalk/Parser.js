@@ -1,4 +1,4 @@
-import { ScriptError, xTokenizeScript } from "./Lexer.js";
+import { ScriptError, fsTokenizeScript } from "./Lexer.js";
 
 const CONSTANTS = {
   empty: "",
@@ -45,19 +45,19 @@ const CARD_WORDS = new Set(["card", "cd"]);
 const BG_WORDS = new Set(["bg", "bkgnd", "background"]);
 
 // 部品の前の「card」「bg」から、どちらの層の部品かを決める。何もなければ "auto"。
-function xLayerOf(xWord) {
+const fsLayerOf = (xWord) => {
   if (CARD_WORDS.has(xWord)) {
     return "card";
   }
 
   return BG_WORDS.has(xWord) ? "background" : "auto";
-}
+};
 const ORDINALS = { next: "next", prev: "prev", previous: "prev", first: "first", last: "last" };
 const RESERVED = new Set(["then", "else", "end"]);
 
 // 「the X of」のXのうち、オブジェクトのプロパティとして扱うもの。
 export const PROPERTIES = new Set([
-  "name", "text", "visible", "locktext", "sharedtext", "style", "sound",
+  "name", "text", "visible", "locktext", "sharedtext", "style", "textsize", "sound",
   "left", "top", "width", "height", "id", "number", "script"
 ]);
 
@@ -164,7 +164,7 @@ const NOT_CHUNK_FOLLOWERS = new Set([
   "to", "of", "in", "with", "mod", "div", "from", "by"
 ]);
 
-function xLooksLikeChunk(xStream) {
+const fsLooksLikeChunk = (xStream) => {
   if (!CHUNK_UNITS[xStream.peekWord()]) {
     return false;
   }
@@ -184,20 +184,20 @@ function xLooksLikeChunk(xStream) {
   }
 
   return !NOT_CHUNK_FOLLOWERS.has(xNext.w);
-}
+};
 
-function xFirstWords(xTokens) {
+const fsFirstWords = (xTokens) => {
   return xTokens.map((xToken) => (xToken.t === "word" ? xToken.w : null));
-}
+};
 
-function xIsEnd(xTokens, xName) {
-  const xWords = xFirstWords(xTokens);
+const fsIsEnd = (xTokens, xName) => {
+  const xWords = fsFirstWords(xTokens);
   return xWords[0] === "end" && xWords[1] === xName;
-}
+};
 
-function xIsElse(xTokens) {
-  return xFirstWords(xTokens)[0] === "else";
-}
+const fsIsElse = (xTokens) => {
+  return fsFirstWords(xTokens)[0] === "else";
+};
 
 class ScriptParser {
   constructor(xLines) {
@@ -231,7 +231,7 @@ class ScriptParser {
 
       const xLower = xName.toLowerCase();
       const xBody = this.parseBlock(
-        (xTokens) => xIsEnd(xTokens, xLower),
+        (xTokens) => fsIsEnd(xTokens, xLower),
         `end ${xName}`,
         xLine.line
       );
@@ -299,7 +299,7 @@ class ScriptParser {
       } else {
         xStream.expectEnd();
 
-        if (this.index < this.lines.length && xIsElse(this.lines[this.index].tokens)) {
+        if (this.index < this.lines.length && fsIsElse(this.lines[this.index].tokens)) {
           const xElseLine = this.lines[this.index++];
           const xElseStream = new TokenStream(xElseLine.tokens, xElseLine.line);
           xElseStream.next();
@@ -310,16 +310,16 @@ class ScriptParser {
       return { k: "if", line: xLine, cond: xCondition, then: xThen, else: xElse };
     }
 
-    const xIsEndIf = (xTokens) => xIsEnd(xTokens, "if");
+    const xIsEndIf = (xTokens) => fsIsEnd(xTokens, "if");
     const xThen = this.parseBlock(
-      (xTokens) => xIsElse(xTokens) || xIsEndIf(xTokens),
+      (xTokens) => fsIsElse(xTokens) || xIsEndIf(xTokens),
       "end if",
       xLine
     );
     const xNextLine = this.lines[this.index++];
     let xElse = [];
 
-    if (xIsElse(xNextLine.tokens)) {
+    if (fsIsElse(xNextLine.tokens)) {
       const xElseStream = new TokenStream(xNextLine.tokens, xNextLine.line);
       xElseStream.next();
       xElse = this.parseElse(xElseStream);
@@ -331,7 +331,7 @@ class ScriptParser {
   // 「else」の直後から読む。
   parseElse(xStream) {
     if (xStream.atEnd()) {
-      const xBody = this.parseBlock((xTokens) => xIsEnd(xTokens, "if"), "end if", xStream.line);
+      const xBody = this.parseBlock((xTokens) => fsIsEnd(xTokens, "if"), "end if", xStream.line);
       this.index += 1;
       return xBody;
     }
@@ -373,7 +373,7 @@ class ScriptParser {
     }
 
     xStream.expectEnd();
-    xNode.body = this.parseBlock((xTokens) => xIsEnd(xTokens, "repeat"), "end repeat", xStream.line);
+    xNode.body = this.parseBlock((xTokens) => fsIsEnd(xTokens, "repeat"), "end repeat", xStream.line);
     this.index += 1;
     return xNode;
   }
@@ -589,7 +589,7 @@ class ScriptParser {
       return { k: "msg" };
     }
 
-    if (xLooksLikeChunk(xStream)) {
+    if (fsLooksLikeChunk(xStream)) {
       xStream.fail("文字や単語の一部への書き込みは、まだ使えません。");
     }
 
@@ -656,8 +656,8 @@ class ScriptParser {
     // card field / bg button など。前に何もなければ、カード→背景の順に探す。
     let xLayer = "auto";
 
-    if (xLayerOf(xWord) !== "auto" && PART_TYPES[xNext]) {
-      xLayer = xLayerOf(xWord);
+    if (fsLayerOf(xWord) !== "auto" && PART_TYPES[xNext]) {
+      xLayer = fsLayerOf(xWord);
       xStream.next();
     }
 
@@ -839,7 +839,7 @@ class ScriptParser {
       return this.parseThe(xStream);
     }
 
-    if (xLooksLikeChunk(xStream)) {
+    if (fsLooksLikeChunk(xStream)) {
       return this.parseChunk(xStream);
     }
 
@@ -910,8 +910,8 @@ class ScriptParser {
 
     let xLayer = "card";
 
-    if (xLayerOf(xStream.peekWord()) !== "auto" && PART_COUNTS[xStream.peekWord(1)]) {
-      xLayer = xLayerOf(xStream.next().w);
+    if (fsLayerOf(xStream.peekWord()) !== "auto" && PART_COUNTS[xStream.peekWord(1)]) {
+      xLayer = fsLayerOf(xStream.next().w);
     }
 
     const xPart = PART_COUNTS[xStream.peekWord()];
@@ -933,14 +933,14 @@ class ScriptParser {
   }
 }
 
-export function xParseScript(xText) {
-  return new ScriptParser(xTokenizeScript(xText)).parseScript();
-}
+export const fsParseScript = (xText) => {
+  return new ScriptParser(fsTokenizeScript(xText)).parseScript();
+};
 
 // 構文の誤りがあればメッセージを、なければ空文字を返す。
-export function xCheckScript(xText) {
+export const fsCheckScript = (xText) => {
   try {
-    xParseScript(xText);
+    fsParseScript(xText);
     return "";
   } catch (xError) {
     if (xError instanceof ScriptError) {
@@ -949,4 +949,4 @@ export function xCheckScript(xText) {
 
     throw xError;
   }
-}
+};

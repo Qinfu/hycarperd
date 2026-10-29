@@ -1,6 +1,6 @@
 import { ScriptError } from "./Lexer.js";
-import { xParseScript } from "./Parser.js";
-import { MIN_PART_SIZE, xBackgroundOf, xFieldText, xSetFieldText } from "../storage/StackIO.js";
+import { fsParseScript } from "./Parser.js";
+import { MIN_PART_SIZE, fsBackgroundOf, fsClampTextSize, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
 
 // 無限ループで画面が固まらないよう、実行できる文の数に上限を設ける。
 const MAX_STEPS = 1_000_000;
@@ -19,13 +19,13 @@ class ExitToTop extends Error {}
 const xSleep = (xMs) => new Promise((xResolve) => setTimeout(xResolve, xMs));
 
 // 全角の数字・記号を半角にそろえる（スマホで全角入力されることが多いため）。
-function xNormalizeDigits(xText) {
+const fsNormalizeDigits = (xText) => {
   return xText.replace(/[０-９．－＋]/g, (xChar) =>
     String.fromCharCode(xChar.charCodeAt(0) - 0xfee0)
   );
-}
+};
 
-export function xToText(xValue) {
+export const fsToText = (xValue) => {
   if (typeof xValue === "number") {
     if (Number.isInteger(xValue)) {
       return String(xValue);
@@ -43,9 +43,9 @@ export function xToText(xValue) {
   }
 
   return String(xValue ?? "");
-}
+};
 
-function xIsNumeric(xValue) {
+const fsIsNumeric = (xValue) => {
   if (typeof xValue === "number") {
     return true;
   }
@@ -54,16 +54,16 @@ function xIsNumeric(xValue) {
     return false;
   }
 
-  const xText = xNormalizeDigits(xValue.trim());
+  const xText = fsNormalizeDigits(xValue.trim());
   return xText !== "" && !Number.isNaN(Number(xText));
-}
+};
 
-function xToNumber(xValue) {
+const fsToNumber = (xValue) => {
   if (typeof xValue === "number") {
     return xValue;
   }
 
-  const xText = xNormalizeDigits(xToText(xValue).trim());
+  const xText = fsNormalizeDigits(fsToText(xValue).trim());
 
   if (xText === "") {
     return 0;
@@ -72,18 +72,18 @@ function xToNumber(xValue) {
   const xNumber = Number(xText);
 
   if (Number.isNaN(xNumber) || typeof xValue === "boolean") {
-    throw new ScriptError(`「${xToText(xValue)}」は数値ではありません。`);
+    throw new ScriptError(`「${fsToText(xValue)}」は数値ではありません。`);
   }
 
   return xNumber;
-}
+};
 
-function xToBoolean(xValue) {
+const fsToBoolean = (xValue) => {
   if (typeof xValue === "boolean") {
     return xValue;
   }
 
-  const xText = xToText(xValue).trim().toLowerCase();
+  const xText = fsToText(xValue).trim().toLowerCase();
 
   if (xText === "true") {
     return true;
@@ -93,28 +93,28 @@ function xToBoolean(xValue) {
     return false;
   }
 
-  throw new ScriptError(`「${xToText(xValue)}」は true でも false でもありません。`);
-}
+  throw new ScriptError(`「${fsToText(xValue)}」は true でも false でもありません。`);
+};
 
-function xEquals(xA, xB) {
-  if (xIsNumeric(xA) && xIsNumeric(xB)) {
-    return xToNumber(xA) === xToNumber(xB);
+const fsEquals = (xA, xB) => {
+  if (fsIsNumeric(xA) && fsIsNumeric(xB)) {
+    return fsToNumber(xA) === fsToNumber(xB);
   }
 
-  return xToText(xA).toLowerCase() === xToText(xB).toLowerCase();
-}
+  return fsToText(xA).toLowerCase() === fsToText(xB).toLowerCase();
+};
 
-function xCompare(xA, xB) {
-  if (xIsNumeric(xA) && xIsNumeric(xB)) {
-    return xToNumber(xA) - xToNumber(xB);
+const fsCompare = (xA, xB) => {
+  if (fsIsNumeric(xA) && fsIsNumeric(xB)) {
+    return fsToNumber(xA) - fsToNumber(xB);
   }
 
-  return xToText(xA).toLowerCase().localeCompare(xToText(xB).toLowerCase());
-}
+  return fsToText(xA).toLowerCase().localeCompare(fsToText(xB).toLowerCase());
+};
 
 const CHUNK_JOINERS = { char: "", word: " ", line: "\n", item: "," };
 
-function xSplitChunks(xText, xUnit) {
+const fsSplitChunks = (xText, xUnit) => {
   switch (xUnit) {
     case "char":
       return [...xText];
@@ -125,32 +125,32 @@ function xSplitChunks(xText, xUnit) {
     default:
       return xText === "" ? [] : xText.split(",");
   }
-}
+};
 
 // 引数がひとつで「,」を含む場合は、項目の並びとして扱う（max(field 1) など）。
-function xNumberList(xArgs) {
-  const xValues = xArgs.length === 1 ? xToText(xArgs[0]).split(",") : xArgs;
-  return xValues.map(xToNumber);
-}
+const fsNumberList = (xArgs) => {
+  const xValues = xArgs.length === 1 ? fsToText(xArgs[0]).split(",") : xArgs;
+  return xValues.map(fsToNumber);
+};
 
 const BUILTIN_FUNCTIONS = {
-  random: ([xMax]) => Math.floor(Math.random() * Math.max(1, Math.trunc(xToNumber(xMax)))) + 1,
-  abs: ([xValue]) => Math.abs(xToNumber(xValue)),
-  round: ([xValue]) => Math.round(xToNumber(xValue)),
-  trunc: ([xValue]) => Math.trunc(xToNumber(xValue)),
-  sqrt: ([xValue]) => Math.sqrt(xToNumber(xValue)),
-  length: ([xValue]) => [...xToText(xValue)].length,
-  max: (xArgs) => Math.max(...xNumberList(xArgs)),
-  min: (xArgs) => Math.min(...xNumberList(xArgs)),
-  sum: (xArgs) => xNumberList(xArgs).reduce((xA, xB) => xA + xB, 0),
+  random: ([xMax]) => Math.floor(Math.random() * Math.max(1, Math.trunc(fsToNumber(xMax)))) + 1,
+  abs: ([xValue]) => Math.abs(fsToNumber(xValue)),
+  round: ([xValue]) => Math.round(fsToNumber(xValue)),
+  trunc: ([xValue]) => Math.trunc(fsToNumber(xValue)),
+  sqrt: ([xValue]) => Math.sqrt(fsToNumber(xValue)),
+  length: ([xValue]) => [...fsToText(xValue)].length,
+  max: (xArgs) => Math.max(...fsNumberList(xArgs)),
+  min: (xArgs) => Math.min(...fsNumberList(xArgs)),
+  sum: (xArgs) => fsNumberList(xArgs).reduce((xA, xB) => xA + xB, 0),
   average: (xArgs) => {
-    const xList = xNumberList(xArgs);
+    const xList = fsNumberList(xArgs);
     return xList.reduce((xA, xB) => xA + xB, 0) / xList.length;
   },
   offset: ([xNeedle, xHaystack]) =>
-    xToText(xHaystack).toLowerCase().indexOf(xToText(xNeedle).toLowerCase()) + 1,
-  chartonum: ([xValue]) => xToText(xValue).codePointAt(0) ?? 0,
-  numtochar: ([xValue]) => String.fromCodePoint(xToNumber(xValue))
+    fsToText(xHaystack).toLowerCase().indexOf(fsToText(xNeedle).toLowerCase()) + 1,
+  chartonum: ([xValue]) => fsToText(xValue).codePointAt(0) ?? 0,
+  numtochar: ([xValue]) => String.fromCodePoint(fsToNumber(xValue))
 };
 
 /*
@@ -232,7 +232,7 @@ export class Interpreter {
     }
 
     if (xCard) {
-      xChain.push({ kind: "background", background: xBackgroundOf(xStack, xCard) });
+      xChain.push({ kind: "background", background: fsBackgroundOf(xStack, xCard) });
     }
 
     if (xObject.kind !== "stack") {
@@ -277,7 +277,7 @@ export class Interpreter {
 
     if (!this.cache.has(xScript)) {
       try {
-        this.cache.set(xScript, xParseScript(xScript));
+        this.cache.set(xScript, fsParseScript(xScript));
       } catch (xError) {
         if (xError instanceof ScriptError) {
           xError.where = this.xDescribe(xObject);
@@ -411,11 +411,11 @@ export class Interpreter {
       }
 
       case "answer": {
-        const xText = xToText(await this.xEval(xStatement.value, xContext));
+        const xText = fsToText(await this.xEval(xStatement.value, xContext));
         const xButtons = [];
 
         for (const xButton of xStatement.buttons) {
-          xButtons.push(xToText(await this.xEval(xButton, xContext)));
+          xButtons.push(fsToText(await this.xEval(xButton, xContext)));
         }
 
         const xChoice = await this.host.answer(xText, xButtons.length > 0 ? xButtons : ["OK"]);
@@ -424,9 +424,9 @@ export class Interpreter {
       }
 
       case "ask": {
-        const xText = xToText(await this.xEval(xStatement.value, xContext));
+        const xText = fsToText(await this.xEval(xStatement.value, xContext));
         const xDefault = xStatement.def
-          ? xToText(await this.xEval(xStatement.def, xContext))
+          ? fsToText(await this.xEval(xStatement.def, xContext))
           : "";
         const xReply = await this.host.ask(xText, xDefault);
 
@@ -437,7 +437,7 @@ export class Interpreter {
 
       case "beep": {
         const xCount = xStatement.count
-          ? Math.max(1, Math.trunc(xToNumber(await this.xEval(xStatement.count, xContext))))
+          ? Math.max(1, Math.trunc(fsToNumber(await this.xEval(xStatement.count, xContext))))
           : 1;
 
         // 次の音は前の音が鳴り終わってから鳴らす。
@@ -450,7 +450,7 @@ export class Interpreter {
 
       // 音は鳴らしたまま、すぐ次の行へ進む（オリジナルの HyperCard と同じ）。
       case "play": {
-        const xName = xToText(await this.xEval(xStatement.sound, xContext)).trim();
+        const xName = fsToText(await this.xEval(xStatement.sound, xContext)).trim();
 
         if (this.host.play(xName) === null) {
           throw new ScriptError(`「${xName}」という音はありません。`, xStatement.line);
@@ -460,7 +460,7 @@ export class Interpreter {
       }
 
       case "wait": {
-        const xAmount = xToNumber(await this.xEval(xStatement.amount, xContext));
+        const xAmount = fsToNumber(await this.xEval(xStatement.amount, xContext));
         const xFactor = { sec: 1000, ms: 1, tick: 1000 / 60 }[xStatement.unit];
         await this.xWait(xAmount * xFactor);
         return null;
@@ -483,8 +483,8 @@ export class Interpreter {
       }
 
       case "math": {
-        const xCurrent = xToNumber(await this.xReadContainer(xStatement.dest, xContext));
-        const xValue = xToNumber(await this.xEval(xStatement.value, xContext));
+        const xCurrent = fsToNumber(await this.xReadContainer(xStatement.dest, xContext));
+        const xValue = fsToNumber(await this.xEval(xStatement.value, xContext));
         let xResult;
 
         if (xStatement.op === "add") {
@@ -535,7 +535,7 @@ export class Interpreter {
         throw new ExitToTop();
 
       case "send": {
-        const xMessage = xToText(await this.xEval(xStatement.message, xContext)).trim();
+        const xMessage = fsToText(await this.xEval(xStatement.message, xContext)).trim();
         const xObject = xStatement.ref
           ? await this.xResolveObject(xStatement.ref, xContext)
           : xContext.me;
@@ -562,7 +562,7 @@ export class Interpreter {
       }
 
       case "if": {
-        const xCondition = xToBoolean(await this.xEval(xStatement.cond, xContext));
+        const xCondition = fsToBoolean(await this.xEval(xStatement.cond, xContext));
         return this.xExecBlock(xCondition ? xStatement.then : xStatement.else, xContext);
       }
 
@@ -591,7 +591,7 @@ export class Interpreter {
       return xSignal;
     };
 
-    const xCheck = async () => xToBoolean(await this.xEval(xStatement.cond, xContext));
+    const xCheck = async () => fsToBoolean(await this.xEval(xStatement.cond, xContext));
 
     const xLoop = async (xShouldContinue) => {
       while (await xShouldContinue()) {
@@ -620,20 +620,20 @@ export class Interpreter {
         return xLoop(async () => !(await xCheck()));
 
       case "count": {
-        const xCount = xToNumber(await this.xEval(xStatement.count, xContext));
+        const xCount = fsToNumber(await this.xEval(xStatement.count, xContext));
         let xIndex = 0;
         return xLoop(async () => xIndex++ < xCount);
       }
 
       default: {
-        let xValue = xToNumber(await this.xEval(xStatement.from, xContext));
-        const xEnd = xToNumber(await this.xEval(xStatement.to, xContext));
+        let xValue = fsToNumber(await this.xEval(xStatement.from, xContext));
+        const xEnd = fsToNumber(await this.xEval(xStatement.to, xContext));
         const xStep = xStatement.down ? -1 : 1;
         let xFirst = true;
 
         return xLoop(async () => {
           if (!xFirst) {
-            xValue = xToNumber(this.xGetVar(xStatement.variable, xContext)) + xStep;
+            xValue = fsToNumber(this.xGetVar(xStatement.variable, xContext)) + xStep;
           }
 
           xFirst = false;
@@ -693,13 +693,13 @@ export class Interpreter {
   }
 
   async xWriteContainer(xDest, xPrep, xValue, xContext) {
-    const xCurrent = xPrep === "into" ? "" : xToText(await this.xReadContainer(xDest, xContext));
+    const xCurrent = xPrep === "into" ? "" : fsToText(await this.xReadContainer(xDest, xContext));
     let xNewValue = xValue;
 
     if (xPrep === "after") {
-      xNewValue = xCurrent + xToText(xValue);
+      xNewValue = xCurrent + fsToText(xValue);
     } else if (xPrep === "before") {
-      xNewValue = xToText(xValue) + xCurrent;
+      xNewValue = fsToText(xValue) + xCurrent;
     }
 
     if (xDest.k === "var") {
@@ -708,7 +708,7 @@ export class Interpreter {
     }
 
     if (xDest.k === "msg") {
-      this.host.setMessage(xToText(xNewValue));
+      this.host.setMessage(fsToText(xNewValue));
       return;
     }
 
@@ -718,7 +718,7 @@ export class Interpreter {
       throw new ScriptError("ボタンかフィールドを指定してください。");
     }
 
-    xSetFieldText(xObject.part, xObject.card, xObject.isBackground, xToText(xNewValue));
+    fsSetFieldText(xObject.part, xObject.card, xObject.isBackground, fsToText(xNewValue));
     this.host.changed();
   }
 
@@ -760,21 +760,21 @@ export class Interpreter {
 
     const xKey = await this.xEval(xRef.which, xContext);
 
-    if (xIsNumeric(xKey)) {
-      const xIndex = Math.trunc(xToNumber(xKey)) - 1;
+    if (fsIsNumeric(xKey)) {
+      const xIndex = Math.trunc(fsToNumber(xKey)) - 1;
 
       if (xIndex < 0 || xIndex >= xCount) {
-        throw new ScriptError(`カード ${xToText(xKey)} はありません。`);
+        throw new ScriptError(`カード ${fsToText(xKey)} はありません。`);
       }
 
       return xIndex;
     }
 
-    const xName = xToText(xKey).toLowerCase();
+    const xName = fsToText(xKey).toLowerCase();
     const xIndex = xCards.findIndex((xCard) => xCard.name.toLowerCase() === xName);
 
     if (xIndex < 0) {
-      throw new ScriptError(`カード「${xToText(xKey)}」が見つかりません。`);
+      throw new ScriptError(`カード「${fsToText(xKey)}」が見つかりません。`);
     }
 
     return xIndex;
@@ -815,13 +815,13 @@ export class Interpreter {
         }
 
         const xLabel = `${xRef.layer === "background" ? "背景" : ""}${PART_LABELS[xRef.type]}`;
-        throw new ScriptError(`${xLabel}「${xToText(xKey)}」が見つかりません。`);
+        throw new ScriptError(`${xLabel}「${fsToText(xKey)}」が見つかりません。`);
       }
     }
   }
 
   xCurrentBackground() {
-    return xBackgroundOf(this.host.getStack(), this.xCurrentCard());
+    return fsBackgroundOf(this.host.getStack(), this.xCurrentCard());
   }
 
   xPartsOf(xLayer, xType) {
@@ -831,11 +831,11 @@ export class Interpreter {
 
   // 数なら何番目か、文字なら名前で探す。
   xFindPart(xParts, xKey) {
-    if (xIsNumeric(xKey)) {
-      return xParts[Math.trunc(xToNumber(xKey)) - 1];
+    if (fsIsNumeric(xKey)) {
+      return xParts[Math.trunc(fsToNumber(xKey)) - 1];
     }
 
-    const xName = xToText(xKey).toLowerCase();
+    const xName = fsToText(xKey).toLowerCase();
     return xParts.find((xPart) => xPart.name.toLowerCase() === xName);
   }
 
@@ -852,7 +852,7 @@ export class Interpreter {
   xValueOf(xObject) {
     switch (xObject.kind) {
       case "part":
-        return xFieldText(xObject.part, xObject.card, xObject.isBackground);
+        return fsFieldText(xObject.part, xObject.card, xObject.isBackground);
       case "card":
         return xObject.card.name;
       case "background":
@@ -874,7 +874,7 @@ export class Interpreter {
         case "name":
           return xPart.name;
         case "text":
-          return xFieldText(xPart, xObject.card, xObject.isBackground);
+          return fsFieldText(xPart, xObject.card, xObject.isBackground);
         case "sharedtext":
           return xPart.sharedText;
         case "visible":
@@ -883,6 +883,8 @@ export class Interpreter {
           return xPart.lockText;
         case "style":
           return xPart.style;
+        case "textsize":
+          return xPart.textSize;
         case "sound":
           return xPart.sound;
         case "left":
@@ -937,42 +939,45 @@ export class Interpreter {
 
       switch (xProp) {
         case "name":
-          xPart.name = xToText(xValue);
+          xPart.name = fsToText(xValue);
           return;
         case "text":
-          xSetFieldText(xPart, xObject.card, xObject.isBackground, xToText(xValue));
+          fsSetFieldText(xPart, xObject.card, xObject.isBackground, fsToText(xValue));
           return;
         case "sharedtext":
-          xPart.sharedText = xToBoolean(xValue);
+          xPart.sharedText = fsToBoolean(xValue);
           return;
         case "visible":
-          xPart.visible = xToBoolean(xValue);
+          xPart.visible = fsToBoolean(xValue);
           return;
         case "locktext":
-          xPart.lockText = xToBoolean(xValue);
+          xPart.lockText = fsToBoolean(xValue);
           return;
         case "sound":
-          xPart.sound = xToText(xValue).trim().toLowerCase();
+          xPart.sound = fsToText(xValue).trim().toLowerCase();
+          return;
+        case "textsize":
+          xPart.textSize = fsClampTextSize(fsToNumber(xValue));
           return;
         case "left":
         case "top":
-          xPart[xProp] = Math.round(xToNumber(xValue));
+          xPart[xProp] = Math.round(fsToNumber(xValue));
           return;
         case "width":
         case "height":
-          xPart[xProp] = Math.max(MIN_PART_SIZE, Math.round(xToNumber(xValue)));
+          xPart[xProp] = Math.max(MIN_PART_SIZE, Math.round(fsToNumber(xValue)));
           return;
         default:
           break;
       }
     } else if (xObject.kind === "card" && xProp === "name") {
-      xObject.card.name = xToText(xValue);
+      xObject.card.name = fsToText(xValue);
       return;
     } else if (xObject.kind === "background" && xProp === "name") {
-      xObject.background.name = xToText(xValue);
+      xObject.background.name = fsToText(xValue);
       return;
     } else if (xObject.kind === "stack" && xProp === "name") {
-      this.host.getStack().stack.name = xToText(xValue);
+      this.host.getStack().stack.name = fsToText(xValue);
       return;
     }
 
@@ -991,7 +996,7 @@ export class Interpreter {
 
       case "un": {
         const xValue = await this.xEval(xNode.a, xContext);
-        return xNode.op === "not" ? !xToBoolean(xValue) : -xToNumber(xValue);
+        return xNode.op === "not" ? !fsToBoolean(xValue) : -fsToNumber(xValue);
       }
 
       case "bin":
@@ -1010,9 +1015,9 @@ export class Interpreter {
         return this.xValueOf(await this.xResolveObject(xNode.ref, xContext));
 
       case "chunk": {
-        const xItems = xSplitChunks(xToText(await this.xEval(xNode.of, xContext)), xNode.unit);
-        const xFrom = Math.trunc(xToNumber(await this.xEval(xNode.from, xContext)));
-        const xTo = xNode.to ? Math.trunc(xToNumber(await this.xEval(xNode.to, xContext))) : xFrom;
+        const xItems = fsSplitChunks(fsToText(await this.xEval(xNode.of, xContext)), xNode.unit);
+        const xFrom = Math.trunc(fsToNumber(await this.xEval(xNode.from, xContext)));
+        const xTo = xNode.to ? Math.trunc(fsToNumber(await this.xEval(xNode.to, xContext))) : xFrom;
 
         if (xFrom < 1 || xTo < xFrom) {
           return "";
@@ -1030,7 +1035,7 @@ export class Interpreter {
           return this.xPartsOf(xNode.layer, xNode.what).length;
         }
 
-        return xSplitChunks(xToText(await this.xEval(xNode.of, xContext)), xNode.what).length;
+        return fsSplitChunks(fsToText(await this.xEval(xNode.of, xContext)), xNode.what).length;
       }
 
       default:
@@ -1040,13 +1045,13 @@ export class Interpreter {
 
   async xEvalBinary(xNode, xContext) {
     if (xNode.op === "and") {
-      return xToBoolean(await this.xEval(xNode.a, xContext))
-        && xToBoolean(await this.xEval(xNode.b, xContext));
+      return fsToBoolean(await this.xEval(xNode.a, xContext))
+        && fsToBoolean(await this.xEval(xNode.b, xContext));
     }
 
     if (xNode.op === "or") {
-      return xToBoolean(await this.xEval(xNode.a, xContext))
-        || xToBoolean(await this.xEval(xNode.b, xContext));
+      return fsToBoolean(await this.xEval(xNode.a, xContext))
+        || fsToBoolean(await this.xEval(xNode.b, xContext));
     }
 
     const xA = await this.xEval(xNode.a, xContext);
@@ -1054,27 +1059,27 @@ export class Interpreter {
 
     switch (xNode.op) {
       case "&":
-        return xToText(xA) + xToText(xB);
+        return fsToText(xA) + fsToText(xB);
       case "&&":
-        return `${xToText(xA)} ${xToText(xB)}`;
+        return `${fsToText(xA)} ${fsToText(xB)}`;
       case "+":
-        return xToNumber(xA) + xToNumber(xB);
+        return fsToNumber(xA) + fsToNumber(xB);
       case "-":
-        return xToNumber(xA) - xToNumber(xB);
+        return fsToNumber(xA) - fsToNumber(xB);
       case "*":
-        return xToNumber(xA) * xToNumber(xB);
+        return fsToNumber(xA) * fsToNumber(xB);
       case "^":
-        return xToNumber(xA) ** xToNumber(xB);
+        return fsToNumber(xA) ** fsToNumber(xB);
       case "/":
       case "div":
       case "mod": {
-        const xDivisor = xToNumber(xB);
+        const xDivisor = fsToNumber(xB);
 
         if (xDivisor === 0) {
           throw new ScriptError("0 で割ることはできません。");
         }
 
-        const xDividend = xToNumber(xA);
+        const xDividend = fsToNumber(xA);
 
         if (xNode.op === "/") {
           return xDividend / xDivisor;
@@ -1083,23 +1088,23 @@ export class Interpreter {
         return xNode.op === "div" ? Math.trunc(xDividend / xDivisor) : xDividend % xDivisor;
       }
       case "=":
-        return xEquals(xA, xB);
+        return fsEquals(xA, xB);
       case "<>":
-        return !xEquals(xA, xB);
+        return !fsEquals(xA, xB);
       case "<":
-        return xCompare(xA, xB) < 0;
+        return fsCompare(xA, xB) < 0;
       case ">":
-        return xCompare(xA, xB) > 0;
+        return fsCompare(xA, xB) > 0;
       case "<=":
-        return xCompare(xA, xB) <= 0;
+        return fsCompare(xA, xB) <= 0;
       case ">=":
-        return xCompare(xA, xB) >= 0;
+        return fsCompare(xA, xB) >= 0;
       case "contains":
-        return xToText(xA).toLowerCase().includes(xToText(xB).toLowerCase());
+        return fsToText(xA).toLowerCase().includes(fsToText(xB).toLowerCase());
       case "in":
-        return xToText(xB).toLowerCase().includes(xToText(xA).toLowerCase());
+        return fsToText(xB).toLowerCase().includes(fsToText(xA).toLowerCase());
       case "notin":
-        return !xToText(xB).toLowerCase().includes(xToText(xA).toLowerCase());
+        return !fsToText(xB).toLowerCase().includes(fsToText(xA).toLowerCase());
       default:
         throw new ScriptError(`未対応の演算子です：${xNode.op}`);
     }

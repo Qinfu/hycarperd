@@ -30,14 +30,14 @@ const MIN_IMAGE_SIZE = 16;
 const MAX_IMAGE_SCALE = 4;
 
 // 明るさ・コントラスト（どちらも -100〜100）を灰色の値（0〜255）に当てはめる。
-export function xAdjustLevel(xGray, xBrightness, xContrast) {
+export const fsAdjustLevel = (xGray, xBrightness, xContrast) => {
   const xFactor = ((100 + xContrast) / 100) ** 2;
   return (xGray - 128) * xFactor + 128 + xBrightness * 1.28;
-}
+};
 
 // アトキンソン方式のディザ（初期のMacの標準）。灰色の値を黒と白のドットに置き換える。
 // 誤差の 6/8 だけを周りに配るので、明るい所と暗い所がつぶれにくい。gray は書き換わる。
-export function xDitherGray(xGray, xWidth, xHeight) {
+export const fsDitherGray = (xGray, xWidth, xHeight) => {
   const xDots = new Uint8Array(xWidth * xHeight);
   const xSpread = [[1, 0], [2, 0], [-1, 1], [0, 1], [1, 1], [0, 2]];
 
@@ -62,7 +62,51 @@ export function xDitherGray(xGray, xWidth, xHeight) {
   }
 
   return xDots;
-}
+};
+
+// 文字を絵として置くときの大きさ（ドット）と、行の高さの倍率。
+export const TEXT_SIZES = [12, 16, 24, 32, 48];
+const TEXT_LINE_HEIGHT = 1.25;
+
+// 文字を絵として置くときのフォント。端末にないフォントは、同じ系統の標準のフォントになる。
+// 丸ゴシックはMac・iPhone以外ではふつうのゴシックになる。
+export const TEXT_FONTS = {
+  gothic: { label: "ゴシック", family: 'Arial, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif' },
+  maru: { label: "丸ゴシック", family: '"Hiragino Maru Gothic ProN", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif' },
+  mincho: { label: "明朝", family: '"Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif' },
+  mono: { label: "等幅", family: 'Menlo, Consolas, "Noto Sans Mono CJK JP", monospace' }
+};
+
+// 文字を黒、ほかを透明にした画像を作る。placeImage に渡すと、画像と同じように位置と大きさを決めて貼れる。
+// 文字のなめらかな縁は半分より濃い所だけ黒にして、白黒のドットにそろえる。
+// font は TEXT_FONTS の名前。
+export const fsTextImage = (xText, xSize, xFontName, xBold) => {
+  const xLines = xText.split("\n");
+  const xFont = `${xBold ? "bold " : ""}${xSize}px ${(TEXT_FONTS[xFontName] ?? TEXT_FONTS.gothic).family}`;
+  const xLineHeight = Math.ceil(xSize * TEXT_LINE_HEIGHT);
+  const xCanvas = document.createElement("canvas");
+  let xContext = xCanvas.getContext("2d");
+
+  xContext.font = xFont;
+  xCanvas.width = Math.max(1, Math.ceil(Math.max(...xLines.map((xLine) => xContext.measureText(xLine).width))) + 2);
+  xCanvas.height = xLineHeight * xLines.length;
+
+  // 大きさを変えると描画の設定が消えるので、設定し直す。
+  xContext = xCanvas.getContext("2d");
+  xContext.font = xFont;
+  xContext.fillStyle = "#000";
+  xContext.textBaseline = "middle";
+  xLines.forEach((xLine, xIndex) => xContext.fillText(xLine, 1, xLineHeight * (xIndex + 0.5)));
+
+  const xImage = xContext.getImageData(0, 0, xCanvas.width, xCanvas.height);
+
+  for (let xOffset = 3; xOffset < xImage.data.length; xOffset += 4) {
+    xImage.data[xOffset] = xImage.data[xOffset] >= 128 ? 255 : 0;
+  }
+
+  xContext.putImageData(xImage, 0, 0);
+  return xCanvas;
+};
 
 /*
  * カード（または背景）の絵を描く。
@@ -123,8 +167,14 @@ export class Painter {
     return Boolean(this.placement);
   }
 
+  // 置いているのが文字か（文字には明るさ・コントラストを使わない）。
+  get placingText() {
+    return Boolean(this.placement?.isText);
+  }
+
   // 画像を取り込んで、貼る前の調整を始める。小さな画像は元の大きさ、大きな画像はカードに収まる大きさで中央に置く。
-  placeImage(xImage) {
+  // image は img 要素か canvas 要素。isText は fsTextImage で作った文字の画像のとき true。
+  placeImage(xImage, xIsText = false) {
     if (!this.owner) {
       return;
     }
@@ -145,6 +195,7 @@ export class Painter {
       height: xHeight,
       brightness: 0,
       contrast: 0,
+      isText: xIsText,
       dots: null
     };
     this.surface.append(this.frame);
@@ -350,11 +401,11 @@ export class Painter {
         xGray[xIndex] = 255;
       } else {
         const xLevel = 0.299 * xPixels[xOffset] + 0.587 * xPixels[xOffset + 1] + 0.114 * xPixels[xOffset + 2];
-        xGray[xIndex] = xAdjustLevel(xLevel, this.placement.brightness, this.placement.contrast);
+        xGray[xIndex] = fsAdjustLevel(xLevel, this.placement.brightness, this.placement.contrast);
       }
     }
 
-    const xDots = xDitherGray(xGray, xWidth, xHeight);
+    const xDots = fsDitherGray(xGray, xWidth, xHeight);
 
     for (let xIndex = 0; xIndex < xDots.length; xIndex += 1) {
       if (xClear[xIndex]) {

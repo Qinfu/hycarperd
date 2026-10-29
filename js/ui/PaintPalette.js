@@ -12,6 +12,13 @@ const TOOL_INFO = {
   fill: { label: "塗りつぶし", icon: '<path d="M4 11l7-7 8 8-7 7zM4 11h15M20 14c1 2 2 4 0 6"/>' }
 };
 
+// 消しゴムをこの時間（ミリ秒）のうちに2回押すと、絵をすべて消す。
+// スマホでは dblclick が来ないことがあるので、押した間隔で見分ける。
+const DOUBLE_PRESS_TIME = 400;
+
+// 文字を絵として置くボタン（道具を切り替えず、文字を入れるダイアログを開く）。
+const TEXT_ICON = '<path d="M5 20L12 4l7 16M8 14h8"/>';
+
 // 塗りつぶしの模様の見本。2×2ドットの模様を枠の中に敷き詰める。
 const PATTERN_INFO = {
   black: { label: "黒", tile: '<rect width="2" height="2"/>' },
@@ -25,8 +32,10 @@ const PATTERN_INFO = {
  * 描画中だけ出す道具パレット（PCはカードの左、スマホはカードの下）。
  * 画像を取り込んでいる間は、道具の代わりに明るさ・コントラストと「貼り付け」を出す。
  * handlers:
+ *   onText()   文字を絵として置く
+ *   onClear()  絵をすべて消す（消しゴムを2回続けて押した）
  *   onUndo()   取り消し
- *   onDone()   描画を終える
+ *   onDone()   描画を終える（部品の編集に戻る）
  *   onLayout() パレットの大きさが変わった（模様と太さの入れ替え、取り込み中の切り替え）
  */
 export class PaintPalette {
@@ -49,6 +58,21 @@ export class PaintPalette {
       this.toolButtons.set(xTool, xButton);
       xTools.append(xButton);
     }
+
+    const xEraser = this.toolButtons.get("eraser");
+    let xLastEraserPress = 0;
+    xEraser.title = "消しゴム（2回続けて押すと絵をすべて消す）";
+    xEraser.addEventListener("click", (xEvent) => {
+      if (xEvent.timeStamp - xLastEraserPress < DOUBLE_PRESS_TIME) {
+        xLastEraserPress = 0;
+        xHandlers.onClear();
+        return;
+      }
+
+      xLastEraserPress = xEvent.timeStamp;
+    });
+
+    xTools.append(this.xButton("文字", `${SVG_START}${TEXT_ICON}</svg>`, () => xHandlers.onText()));
 
     const xSizes = this.xGroup("線の太さ");
 
@@ -87,7 +111,7 @@ export class PaintPalette {
     const xActions = this.xGroup("操作");
     this.undoButton = this.xButton("取り消し", "取消", () => xHandlers.onUndo());
     this.undoButton.classList.add("is-text");
-    const xDone = this.xButton("描画を終える", "完了", () => xHandlers.onDone());
+    const xDone = this.xButton("描画を終えて部品の編集に戻る", "完了", () => xHandlers.onDone());
     xDone.classList.add("is-text");
     xActions.append(this.undoButton, xDone);
 
@@ -110,6 +134,7 @@ export class PaintPalette {
     xPane.setAttribute("aria-label", "画像の取り込み");
     this.brightness = this.xSlider(xPane, "明るさ", xApply);
     this.contrast = this.xSlider(xPane, "コントラスト", xApply);
+    this.sliders = [this.brightness.closest("label"), this.contrast.closest("label")];
 
     xButtons.className = "paint-import-buttons";
     xCancel.type = "button";
@@ -158,17 +183,22 @@ export class PaintPalette {
 
     const xFilling = this.painter.tool === "fill";
     const xPlacing = this.painter.placing;
-    const xLayout = `${xFilling}:${xPlacing}`;
+    const xLayout = `${xFilling}:${xPlacing}:${this.painter.placingText}`;
 
     this.toolGroup.hidden = xPlacing;
     this.actionGroup.hidden = xPlacing;
     this.sizeGroup.hidden = xPlacing || xFilling;
     this.patternGroup.hidden = xPlacing || !xFilling;
     this.importPane.hidden = !xPlacing;
+    this.importPane.setAttribute("aria-label", this.painter.placingText ? "文字の配置" : "画像の取り込み");
+
+    for (const xSlider of this.sliders) {
+      xSlider.hidden = this.painter.placingText;
+    }
     this.undoButton.disabled = !this.painter.canUndo;
 
     // 取り込みを始めるたびに、明るさ・コントラストを元に戻す。
-    if (xPlacing && !this.layout.endsWith(":true")) {
+    if (xPlacing && this.layout.split(":")[1] !== "true") {
       this.brightness.value = "0";
       this.contrast.value = "0";
     }

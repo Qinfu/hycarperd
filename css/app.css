@@ -2,6 +2,7 @@
   color-scheme: light;
   --hc-black: #000;
   --hc-white: #fff;
+  --hc-desk: #e6e6e6;
   --hc-mono: "SFMono-Regular", Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
   --menubar-height: 30px;
 }
@@ -40,7 +41,7 @@ body {
   height: 100dvh;
   margin: 0;
   overflow: hidden;
-  background: var(--hc-white);
+  background: var(--hc-desk);
   color: var(--hc-black);
   font-family: Arial, "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", sans-serif;
@@ -208,12 +209,12 @@ button:disabled {
   font-weight: bold;
 }
 
-/* カード名はPCではタイトルバーに出すので、メニューバーには出さない。 */
-[data-ui="pc"] .menubar-card {
+/* カード名はタイトルバーに出すので、メニューバーには出さない。 */
+.menubar-card {
   display: none;
 }
 
-/* スマホ：スタック名とカード名、右端に「☰」。 */
+/* スマホ：スタック名、右端に「☰」。 */
 [data-ui="mobile"] .menubar {
   padding: 0 0 0 12px;
 }
@@ -340,7 +341,7 @@ button:disabled {
   box-shadow: 3px 3px 0 var(--hc-black);
 }
 
-/* クラシックMacのウィンドウのような横縞のタイトルバー（PCのみ）。 */
+/* クラシックMacのウィンドウのような横縞のタイトルバー。 */
 .title-bar {
   display: flex;
   justify-content: center;
@@ -355,10 +356,6 @@ button:disabled {
       var(--hc-black) 2px 3px
     )
     0 4px / 100% 15px no-repeat;
-}
-
-[data-ui="mobile"] .title-bar {
-  display: none;
 }
 
 #card-name {
@@ -567,6 +564,11 @@ div.card-content {
 
 /* ---- メッセージボックス（スクリプトの put の表示先） ---- */
 
+/* カード・背景の編集中と描画中は出さない。 */
+[data-editing] .message-box {
+  display: none;
+}
+
 .message-box {
   flex: 0 0 auto;
   width: 100%;
@@ -575,6 +577,7 @@ div.card-content {
   margin: 0;
   padding: 6px 8px;
   border: 2px solid var(--hc-black);
+  background: var(--hc-white);
   font-family: var(--hc-mono);
   font-size: 14px;
   white-space: pre-wrap;
@@ -753,6 +756,8 @@ div.card-content {
   height: 40px;
   padding: 0;
   border-width: 1px;
+  /* 消しゴムのダブルタップで画面が拡大されないようにする。 */
+  touch-action: manipulation;
 }
 
 .paint-button[aria-pressed="true"] {
@@ -824,6 +829,8 @@ div.card-content {
 
 [data-ui="mobile"] .paint-group {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 4px;
 }
 
@@ -903,6 +910,49 @@ div.card-content {
 
 .dialog-input {
   margin-bottom: 16px;
+}
+
+/* 見るだけのダイアログ（スタック情報の表示など）。 */
+.dialog-title {
+  font-weight: bold;
+  text-align: center;
+}
+
+.dialog-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 0 0 16px;
+}
+
+.dialog-facts dt {
+  font-weight: bold;
+}
+
+.dialog-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.dialog-facts dd.is-empty {
+  color: #666;
+}
+
+.dialog-textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.dialog-select {
+  display: flex;
+  margin-bottom: 10px;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.dialog-select select {
+  flex: 1;
 }
 
 .dialog-buttons {

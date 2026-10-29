@@ -1,9 +1,10 @@
 /*
  * プルダウンメニュー。同じメニュー定義から、端末に合わせて2通りに描く。
  *   pc     : クラシックMac風のメニューバー（見出しごとにプルダウン）
- *   mobile : 上部にスタック名とカード名、右端の「☰」で全メニューを一覧表示
+ *   mobile : 上部にスタック名、右端の「☰」で全メニューを一覧表示
  *
- * menus: [{ title, items: [{ label, action, enabled?(), checked?() } | "-"] }]
+ * menus: [{ title, visible?(), items: [{ label, action, enabled?(), checked?(), visible?() } | "-"] }]
+ * visible が false のメニュー・項目は出さない。状態が変わったら update() を呼ぶ。
  */
 export class MenuBar {
   constructor(xRoot, xMenus) {
@@ -13,6 +14,7 @@ export class MenuBar {
     this.openIndex = -1;
     this.title = "";
     this.subtitle = "";
+    this.visibleKey = "";
 
     document.addEventListener("pointerdown", (xEvent) => {
       if (this.openIndex >= 0 && !this.root.contains(xEvent.target)) {
@@ -42,6 +44,44 @@ export class MenuBar {
     }
   }
 
+  // 出すメニューが変わったときだけ描き直す（開いているメニューを閉じないため）。
+  update() {
+    const xKey = this.xVisibleMenus().map(({ xIndex }) => xIndex).join(",");
+
+    if (xKey !== this.visibleKey) {
+      this.openIndex = -1;
+      this.render();
+    }
+  }
+
+  // 出すメニューと、その元の番号。項目が1つも出ないメニューも出さない。
+  xVisibleMenus() {
+    return this.menus
+      .map((xMenu, xIndex) => ({ xMenu, xIndex }))
+      .filter(({ xMenu }) => (xMenu.visible?.() ?? true) && this.xVisibleItems(xMenu.items).length > 0);
+  }
+
+  // 出す項目。隠した項目のせいで区切り線が先頭・末尾・続けて並ばないようにする。
+  xVisibleItems(xItems) {
+    const xResult = [];
+
+    for (const xItem of xItems) {
+      if (xItem === "-") {
+        if (xResult.length > 0 && xResult.at(-1) !== "-") {
+          xResult.push(xItem);
+        }
+      } else if (xItem.visible?.() ?? true) {
+        xResult.push(xItem);
+      }
+    }
+
+    if (xResult.at(-1) === "-") {
+      xResult.pop();
+    }
+
+    return xResult;
+  }
+
   open(xIndex) {
     this.openIndex = xIndex;
     this.render();
@@ -55,6 +95,7 @@ export class MenuBar {
 
   render() {
     this.root.replaceChildren();
+    this.visibleKey = this.xVisibleMenus().map(({ xIndex }) => xIndex).join(",");
 
     if (this.mode === "mobile") {
       this.xRenderMobile();
@@ -76,7 +117,7 @@ export class MenuBar {
     xNav.className = "menubar-menus";
     xNav.setAttribute("aria-label", "メニュー");
 
-    this.menus.forEach((xMenu, xIndex) => {
+    this.xVisibleMenus().forEach(({ xMenu, xIndex }) => {
       const xWrapper = document.createElement("div");
       const xTitle = document.createElement("button");
       const xIsOpen = xIndex === this.openIndex;
@@ -139,7 +180,7 @@ export class MenuBar {
       const xDropdown = this.xBuildDropdown();
       xDropdown.classList.add("is-mobile");
 
-      for (const xMenu of this.menus) {
+      for (const { xMenu } of this.xVisibleMenus()) {
         const xHeading = document.createElement("div");
         xHeading.className = "menu-section-title";
         xHeading.textContent = xMenu.title;
@@ -159,7 +200,7 @@ export class MenuBar {
   }
 
   xAppendItems(xDropdown, xItems) {
-    for (const xItem of xItems) {
+    for (const xItem of this.xVisibleItems(xItems)) {
       if (xItem === "-") {
         const xSeparator = document.createElement("div");
         xSeparator.className = "menu-separator";
@@ -187,6 +228,8 @@ export class MenuBar {
       xButton.addEventListener("click", () => {
         this.close();
         xItem.action();
+        // ブラウズ・エディットの切り替えなどで、出すメニューが変わることがある。
+        this.update();
       });
 
       xDropdown.append(xButton);

@@ -20,7 +20,19 @@ const STACK_TYPE = "HycarPerdStack";
 
 // カードを切り替えるときの効果（スクリプトで visual effect を指定しなかったとき）。
 // wipe は次のカードへなら左へ、前のカードへなら右へ拭き取る。
+// カードごとに設定でき、移る先のカードの効果を使う。カードが空ならスタックの効果に従う。
 export const CARD_EFFECTS = ["wipe", "dissolve", "none"];
+
+// ボタン・フィールドの文字の大きさ（ドット）。設定画面の選択肢と、スクリプトで指定できる範囲。
+export const PART_TEXT_SIZES = [12, 16, 18, 24];
+export const DEFAULT_PART_TEXT_SIZE = 16;
+export const PART_TEXT_SIZE_RANGE = [6, 96];
+
+// 文字の大きさを範囲に収める。数でなければ既定の大きさ。
+export const fsClampTextSize = (xValue) => {
+  const [xMin, xMax] = PART_TEXT_SIZE_RANGE;
+  return Number.isFinite(xValue) ? Math.min(Math.max(xMin, Math.round(xValue)), xMax) : DEFAULT_PART_TEXT_SIZE;
+};
 
 // beep で鳴らす音の既定。音の名前は js/ui/Sound.js のもの（知らない名前なら鳴らさない）。
 export const DEFAULT_BEEP_SOUND = "beep";
@@ -28,37 +40,37 @@ export const DEFAULT_BEEP_SOUND = "beep";
 // カード・背景の絵はPNGのデータURLで持つ。
 const PICTURE_PREFIX = "data:image/png;base64,";
 
-export function xCardSize(xStack) {
+export const fsCardSize = (xStack) => {
   return { width: xStack.stack.width, height: xStack.stack.height };
-}
+};
 
 // カードが属する背景。今は1スタックに背景1つだが、データは複数持てる形にしてある。
-export function xBackgroundOf(xStack, xCard) {
+export const fsBackgroundOf = (xStack, xCard) => {
   return xStack.backgrounds.find((xBackground) => xBackground.id === xCard.backgroundId)
     ?? xStack.backgrounds[0];
-}
+};
 
 // 背景のフィールドは、置き場所は全カード共通で、中身はカードごとに持つ（sharedText のときは共通）。
-function xHasCardText(xPart, xIsBackground) {
+const fsHasCardText = (xPart, xIsBackground) => {
   return xIsBackground && xPart.type === "field" && !xPart.sharedText;
-}
+};
 
-export function xFieldText(xPart, xCard, xIsBackground) {
-  return xHasCardText(xPart, xIsBackground) ? xCard.bgText[xPart.id] ?? "" : xPart.text;
-}
+export const fsFieldText = (xPart, xCard, xIsBackground) => {
+  return fsHasCardText(xPart, xIsBackground) ? xCard.bgText[xPart.id] ?? "" : xPart.text;
+};
 
-export function xSetFieldText(xPart, xCard, xIsBackground, xText) {
-  if (xHasCardText(xPart, xIsBackground)) {
+export const fsSetFieldText = (xPart, xCard, xIsBackground, xText) => {
+  if (fsHasCardText(xPart, xIsBackground)) {
     xCard.bgText[xPart.id] = xText;
   } else {
     xPart.text = xText;
   }
-}
+};
 
-function xCreateId(xPrefix) {
+const fsCreateId = (xPrefix) => {
   const xRandom = Math.random().toString(36).slice(2, 8);
   return `${xPrefix}-${Date.now().toString(36)}-${xRandom}`;
-}
+};
 
 export const StackIO = {
   async loadSample() {
@@ -86,14 +98,17 @@ export const StackIO = {
   },
 
   createEmpty(xName) {
-    const xBackgroundId = xCreateId("bg");
+    const xBackgroundId = fsCreateId("bg");
 
     return {
       formatVersion: 1,
       type: STACK_TYPE,
       stack: {
-        id: xCreateId("stack"),
+        id: fsCreateId("stack"),
         name: xName,
+        // 作者とスタックの版（どちらも自由な文字。ファイル形式の版 formatVersion とは別）
+        author: "",
+        version: "",
         width: DEFAULT_CARD_SIZE.width,
         height: DEFAULT_CARD_SIZE.height,
         effect: "wipe",
@@ -105,7 +120,7 @@ export const StackIO = {
     };
   },
 
-  createBackground(xId = xCreateId("bg")) {
+  createBackground(xId = fsCreateId("bg")) {
     return {
       id: xId,
       name: "標準背景",
@@ -116,15 +131,26 @@ export const StackIO = {
     };
   },
 
+  // カードを丸ごと写したもの（部品・本文・絵・スクリプト・背景フィールドの中身・切り替え効果）。
+  // カードと部品の id は新しくする。背景フィールドの中身は背景の部品の id で持つので、そのまま写す。
+  duplicateCard(xCard, xName) {
+    const xCopy = structuredClone(xCard);
+    xCopy.id = fsCreateId("card");
+    xCopy.name = xName;
+    xCopy.parts = xCopy.parts.map((xPart) => ({ ...xPart, id: fsCreateId(xPart.type) }));
+    return xCopy;
+  },
+
   createCard(xBackgroundId, xName) {
     return {
-      id: xCreateId("card"),
+      id: fsCreateId("card"),
       name: xName,
       backgroundId: xBackgroundId,
       content: "",
       picture: "",
       parts: [],
       bgText: {},
+      effect: "",
       script: ""
     };
   },
@@ -143,7 +169,7 @@ export const StackIO = {
     const xOffset = (xOwner.parts.length % 8) * 12;
 
     return {
-      id: xCreateId(xType),
+      id: fsCreateId(xType),
       type: xType,
       name: `${xDefaults.label}${xNumber}`,
       left: Math.max(0, Math.round((xSize.width - xDefaults.width) / 2) - 24 + xOffset),
@@ -155,6 +181,7 @@ export const StackIO = {
       visible: true,
       lockText: false,
       sharedText: false,
+      textSize: DEFAULT_PART_TEXT_SIZE,
       sound: "",
       script: xDefaults.script
     };
@@ -260,6 +287,8 @@ export const StackIO = {
     xData.stack.width = xSize(xData.stack.width, LEGACY_CARD_SIZE.width);
     xData.stack.height = xSize(xData.stack.height, LEGACY_CARD_SIZE.height);
     xData.stack.script = xText(xData.stack.script);
+    xData.stack.author = xText(xData.stack.author);
+    xData.stack.version = xText(xData.stack.version);
     xData.stack.effect = CARD_EFFECTS.includes(xData.stack.effect) ? xData.stack.effect : "wipe";
     xData.stack.beepSound = xText(xData.stack.beepSound).toLowerCase() || DEFAULT_BEEP_SOUND;
 
@@ -274,7 +303,7 @@ export const StackIO = {
         const xHeight = Math.min(Math.max(MIN_PART_SIZE, xNumber(xPart.height, xDefaults.height)), xCardHeight);
 
         return {
-          id: xText(xPart.id) || xCreateId(xPart.type),
+          id: xText(xPart.id) || fsCreateId(xPart.type),
           type: xPart.type,
           name: xText(xPart.name, xDefaults.label),
           left: Math.min(Math.max(0, xNumber(xPart.left, 0)), xCardWidth - xWidth),
@@ -286,6 +315,7 @@ export const StackIO = {
           visible: xPart.visible !== false,
           lockText: xPart.lockText === true,
           sharedText: xPart.sharedText === true,
+          textSize: fsClampTextSize(xPart.textSize),
           // ボタンを押したときの音（空なら鳴らさない）
           sound: xText(xPart.sound).toLowerCase(),
           script: xText(xPart.script)
@@ -295,7 +325,7 @@ export const StackIO = {
     xData.backgrounds = (Array.isArray(xData.backgrounds) ? xData.backgrounds : [])
       .filter((xBackground) => xBackground && typeof xBackground === "object")
       .map((xBackground) => ({
-        id: xText(xBackground.id) || xCreateId("bg"),
+        id: xText(xBackground.id) || fsCreateId("bg"),
         name: xText(xBackground.name, "標準背景"),
         content: xText(xBackground.content),
         picture: xPicture(xBackground.picture),
@@ -313,6 +343,7 @@ export const StackIO = {
       xCard.content = xText(xCard.content);
       xCard.picture = xPicture(xCard.picture);
       xCard.script = xText(xCard.script);
+      xCard.effect = CARD_EFFECTS.includes(xCard.effect) ? xCard.effect : "";
       xCard.parts = xNormalizeParts(xCard.parts);
 
       if (!xBackgroundIds.has(xCard.backgroundId)) {

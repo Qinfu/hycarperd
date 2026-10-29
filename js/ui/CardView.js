@@ -1,4 +1,4 @@
-import { MIN_PART_SIZE, xFieldText } from "../storage/StackIO.js";
+import { MIN_PART_SIZE, fsFieldText } from "../storage/StackIO.js";
 
 // 大きな画面で引き伸ばしすぎないための上限。
 const MAX_SCALE = 2;
@@ -374,6 +374,7 @@ export class CardView {
     xElement.style.top = `${xPart.top}px`;
     xElement.style.width = `${xPart.width}px`;
     xElement.style.height = `${xPart.height}px`;
+    xElement.style.fontSize = `${xPart.textSize}px`;
   }
 
   // inactive なら、見えるだけで触れない部品にする。
@@ -387,7 +388,7 @@ export class CardView {
       xElement.addEventListener("click", () => this.handlers.onPartClick(xPart, xIsBackground));
     } else {
       xElement = document.createElement("textarea");
-      xElement.value = xFieldText(xPart, this.card, xIsBackground);
+      xElement.value = fsFieldText(xPart, this.card, xIsBackground);
       xElement.readOnly = xPart.lockText;
       xElement.setAttribute("aria-label", xPart.name);
       xElement.addEventListener("input", () => {
@@ -424,7 +425,7 @@ export class CardView {
     xLabel.className = "part-label";
     xLabel.textContent = xPart.type === "button"
       ? xPart.name
-      : xFieldText(xPart, this.card, xIsBackground) || xPart.name;
+      : fsFieldText(xPart, this.card, xIsBackground) || xPart.name;
     xHandle.className = "part-handle";
     xHandle.setAttribute("aria-hidden", "true");
     xElement.append(xLabel, xHandle);

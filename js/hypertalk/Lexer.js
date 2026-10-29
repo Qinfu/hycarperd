@@ -20,7 +20,7 @@ const NUMBER_PATTERN = /^(\d+(\.\d*)?|\.\d+)/;
 // iOSのスマート句読点が入力した引用符も受け付ける。
 const QUOTE_PAIRS = { "\"": "\"", "“": "”", "”": "”", "„": "“" };
 
-function xTokenizeLine(xText, xLine) {
+const fsTokenizeLine = (xText, xLine) => {
   const xTokens = [];
   let xRest = xText;
   let xContinued = false;
@@ -86,15 +86,15 @@ function xTokenizeLine(xText, xLine) {
   }
 
   return { tokens: xTokens, continued: xContinued };
-}
+};
 
 // 空行を除いた行の配列を返す。「¬」で終わる行は次の行とつなげる。
-export function xTokenizeScript(xText) {
+export const fsTokenizeScript = (xText) => {
   const xLines = [];
   let xPending = null;
 
   xText.split(/\r?\n/).forEach((xRaw, xIndex) => {
-    const xResult = xTokenizeLine(xRaw, xIndex + 1);
+    const xResult = fsTokenizeLine(xRaw, xIndex + 1);
 
     if (xPending) {
       xPending.tokens.push(...xResult.tokens);
@@ -116,4 +116,4 @@ export function xTokenizeScript(xText) {
   }
 
   return xLines;
-}
+};

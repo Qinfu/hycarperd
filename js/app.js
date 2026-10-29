@@ -1,12 +1,12 @@
-import { StackIO, MAX_CARDS, xCardSize, xBackgroundOf, xSetFieldText } from "./storage/StackIO.js";
+import { StackIO, MAX_CARDS, fsCardSize, fsBackgroundOf, fsSetFieldText } from "./storage/StackIO.js";
 import { Interpreter } from "./hypertalk/Interpreter.js";
 import { CardView } from "./ui/CardView.js";
 import { Inspector } from "./ui/Inspector.js";
 import { MenuBar } from "./ui/MenuBar.js";
-import { Painter } from "./ui/Painter.js";
+import { Painter, TEXT_FONTS, TEXT_SIZES, fsTextImage } from "./ui/Painter.js";
 import { PaintPalette } from "./ui/PaintPalette.js";
-import { xAnswer, xAsk } from "./ui/Dialog.js";
-import { xHasSound, xPlaySound, xUnlockSound } from "./ui/Sound.js";
+import { fsAnswer, fsAsk, fsAskText, fsShowFacts } from "./ui/Dialog.js";
+import { fsHasSound, fsPlaySound, fsUnlockSound } from "./ui/Sound.js";
 
 const xCardWindow = document.querySelector("#card-window");
 const xCardName = document.querySelector("#card-name");
@@ -36,110 +36,112 @@ let pSaveTimer = null;
 let pToastTimer = null;
 let pHistory = [];
 let pImageUrl = "";
+// 文字を絵として置くときに前に選んだ大きさ・フォント・太さ。
+let pTextOptions = { size: 16, font: "gothic", bold: false };
 
 // アプリからのお知らせ。少しの間だけ表示する。
-function xShowStatus(xMessage) {
+const fsShowStatus = (xMessage) => {
   clearTimeout(pToastTimer);
   xToast.textContent = xMessage;
   xToast.hidden = false;
   pToastTimer = setTimeout(() => {
     xToast.hidden = true;
   }, TOAST_TIME);
-}
+};
 
 // スクリプトの put の表示先。書き込まれたら表示する。
-function xShowMessage(xText) {
+const fsShowMessage = (xText) => {
   xMessageBox.textContent = xText;
   xMessageBox.hidden = false;
-}
+};
 
-function xSaveNow() {
+const fsSaveNow = () => {
   clearTimeout(pSaveTimer);
   pSaveTimer = null;
 
   if (pStack && !StackIO.saveLocal(pStack)) {
-    xShowStatus("ブラウザに保存できません。JSONで保存してください。");
+    fsShowStatus("ブラウザに保存できません。ファイルメニューの「保存」でファイルに保存してください。");
   }
-}
+};
 
 // 文字入力のたびに保存しないよう、少し待ってからまとめて保存する。
-function xScheduleSave() {
+const fsScheduleSave = () => {
   clearTimeout(pSaveTimer);
-  pSaveTimer = setTimeout(xSaveNow, SAVE_DELAY);
-}
+  pSaveTimer = setTimeout(fsSaveNow, SAVE_DELAY);
+};
 
-function xCurrentCard() {
+const fsCurrentCard = () => {
   return pStack.cards[pCardIndex];
-}
+};
 
-function xCurrentBackground() {
-  return xBackgroundOf(pStack, xCurrentCard());
-}
+const fsCurrentBackground = () => {
+  return fsBackgroundOf(pStack, fsCurrentCard());
+};
 
 // 編集している層（カードまたは背景）。部品の追加・選択・削除はこの層に対して行う。
-function xEditOwner() {
-  return pEditLayer === "background" ? xCurrentBackground() : xCurrentCard();
-}
+const fsEditOwner = () => {
+  return pEditLayer === "background" ? fsCurrentBackground() : fsCurrentCard();
+};
 
-function xSelectedPart() {
+const fsSelectedPart = () => {
   if (!pStack || !pEditing || pPainting) {
     return null;
   }
 
-  return xEditOwner().parts.find((xPart) => xPart.id === pSelectedId) ?? null;
-}
+  return fsEditOwner().parts.find((xPart) => xPart.id === pSelectedId) ?? null;
+};
 
-function xCardObject() {
-  return { kind: "card", card: xCurrentCard() };
-}
+const fsCardObject = () => {
+  return { kind: "card", card: fsCurrentCard() };
+};
 
-function xPartObject(xPart, xIsBackground) {
-  return { kind: "part", part: xPart, card: xCurrentCard(), isBackground: xIsBackground };
-}
+const fsPartObject = (xPart, xIsBackground) => {
+  return { kind: "part", part: xPart, card: fsCurrentCard(), isBackground: xIsBackground };
+};
 
-async function xConfirm(xMessage) {
-  return (await xAnswer(xMessage, ["キャンセル", "OK"])) === "OK";
-}
+const fsConfirm = async (xMessage) => {
+  return (await fsAnswer(xMessage, ["キャンセル", "OK"])) === "OK";
+};
 
 // 現在のスタックはブラウザ内に1つしか保存しないため、置き換える前に確認する。
-function xConfirmReplace() {
-  return xConfirm(
-    "現在のスタックは置き換えられます。\n残したい場合は先に「JSONで保存」してください。\n続けますか？"
+const fsConfirmReplace = () => {
+  return fsConfirm(
+    "現在のスタックは置き換えられます。\n残したい場合は先にファイルメニューの「保存」をしてください。\n続けますか？"
   );
-}
+};
 
 // スクリプトの実行中は、画面からの操作を受け付けない。
-function xIsBusy() {
+const fsIsBusy = () => {
   if (pInterpreter.busy) {
-    xShowStatus("スクリプトを実行中です。ツールメニューで中断できます。");
+    fsShowStatus("スクリプトを実行中です。スタックメニューの「ブラウズ」「エディット」で中断できます。");
     return true;
   }
 
   return false;
-}
+};
 
 // ---- スクリプトの実行系に渡す画面側の機能 ----
 
 const pInterpreter = new Interpreter({
   getStack: () => pStack,
   getCardIndex: () => pCardIndex,
-  goToCard: (xIndex, xEffect) => xGoToCard(xIndex, true, xEffect),
-  goBack: (xEffect) => xGoBack(xEffect),
+  goToCard: (xIndex, xEffect) => fsGoToCard(xIndex, true, xEffect),
+  goBack: (xEffect) => fsGoBack(xEffect),
   changed: () => {
-    xRenderCard();
-    xScheduleSave();
+    fsRenderCard();
+    fsScheduleSave();
   },
   getMessage: () => xMessageBox.textContent,
-  setMessage: (xText) => xShowMessage(xText),
-  answer: (xText, xButtons) => xAnswer(xText, xButtons),
-  ask: (xText, xDefault) => xAsk(xText, xDefault),
-  beep: () => xPlaySound(pStack.stack.beepSound),
-  play: (xName) => (xHasSound(xName) ? xPlaySound(xName) : null),
+  setMessage: (xText) => fsShowMessage(xText),
+  answer: (xText, xButtons) => fsAnswer(xText, xButtons),
+  ask: (xText, xDefault) => fsAsk(xText, xDefault),
+  beep: () => fsPlaySound(pStack.stack.beepSound),
+  play: (xName) => (fsHasSound(xName) ? fsPlaySound(xName) : null),
   reportError: (xError) => {
     const xWhere = [xError.where, xError.line ? `${xError.line}行目` : ""]
       .filter(Boolean)
       .join(" ");
-    xAnswer(`スクリプトエラー\n${xWhere}\n\n${xError.message}`);
+    fsAnswer(`スクリプトエラー\n${xWhere}\n\n${xError.message}`);
   }
 });
 
@@ -151,38 +153,38 @@ const pCardView = new CardView(
     onPartClick: (xPart, xIsBackground) => {
       // 押したときの音は、スクリプトが動いている最中でも鳴らす。
       if (xPart.type === "button" && xPart.sound) {
-        xPlaySound(xPart.sound);
+        fsPlaySound(xPart.sound);
       }
 
       if (!pInterpreter.busy) {
-        pInterpreter.sendMessage("mouseUp", xPartObject(xPart, xIsBackground));
+        pInterpreter.sendMessage("mouseUp", fsPartObject(xPart, xIsBackground));
       }
     },
     onCardClick: () => {
       if (!pInterpreter.busy) {
-        pInterpreter.sendMessage("mouseUp", xCardObject());
+        pInterpreter.sendMessage("mouseUp", fsCardObject());
       }
     },
     onFieldInput: (xPart, xText, xIsBackground) => {
-      xSetFieldText(xPart, xCurrentCard(), xIsBackground, xText);
-      xScheduleSave();
+      fsSetFieldText(xPart, fsCurrentCard(), xIsBackground, xText);
+      fsScheduleSave();
     },
     onSwipe: (xDirection) => {
-      xNavigate(pCardIndex + (xDirection === "next" ? 1 : -1));
+      fsNavigate(pCardIndex + (xDirection === "next" ? 1 : -1));
     },
     onContentInput: (xText) => {
-      xEditOwner().content = xText;
-      xScheduleSave();
+      fsEditOwner().content = xText;
+      fsScheduleSave();
     },
     onSelect: (xPartId) => {
       pSelectedId = xPartId;
     },
     onPartOpen: (xPart) => {
       pSelectedId = xPart.id;
-      xShowInfo("part");
+      fsShowInfo("part");
     },
     onPartMoved: () => {
-      xScheduleSave();
+      fsScheduleSave();
     }
   }
 );
@@ -190,153 +192,176 @@ const pCardView = new CardView(
 const pInspector = new Inspector({
   onChange: (xRerender) => {
     if (xRerender) {
-      xRenderCard();
+      fsRenderCard();
     }
 
-    xScheduleSave();
+    fsScheduleSave();
   },
-  onDeletePart: (xPart) => xDeletePart(xPart),
-  onClose: () => xSaveNow()
+  onDeletePart: (xPart) => fsDeletePart(xPart),
+  onClose: () => fsSaveNow()
 });
 
 // 描画中は pEditing も true にして、スクリプトを動かさない（openCard なども送らない）。
 const pPainter = new Painter({
   onChange: (xOwner, xPicture) => {
     xOwner.picture = xPicture;
-    xScheduleSave();
+    fsScheduleSave();
   },
   onState: () => pPalette?.update()
 });
 
 const pPalette = new PaintPalette(xPaletteRoot, pPainter, {
+  onText: () => fsPlaceText(),
+  onClear: () => fsClearPicture(),
   onUndo: () => pPainter.undo(),
-  onDone: () => xSetTool("browse"),
+  // 「完了」で絵を描くのを終え、同じ層の部品の編集に戻る。
+  onDone: () => fsSetEditTarget(pEditLayer, false),
   onLayout: () => pCardView.fit()
 });
 
 // ---- メニュー ----
 
+// メニューは「ブラウズ」と「エディット」の2つのモードで出し分ける。
+//   ブラウズ  ：ファイル / 移動 / スタック
+//   エディット：ファイル / 編集 / ツール / 移動 / スタック
+// エディットの中で、何を編集するか（カード・背景、部品・絵）は編集メニューの先頭で選ぶ。
+const xInEdit = () => pEditing;
+const xInParts = () => pEditing && !pPainting;
+const xInPaint = () => pPainting;
+
+// エディットの中で、層（カード・背景）や編集するもの（部品・絵）を切り替える。
+const fsSetEditTarget = (xLayer, xPaint) => {
+  fsSetTool(xPaint ? `paint-${xLayer}` : xLayer);
+};
+
 const pMenuBar = new MenuBar(document.querySelector("#menubar"), [
   {
     title: "ファイル",
     items: [
-      { label: "新規スタック…", action: () => xNewStack() },
-      { label: "JSONを開く…", action: () => xStackFile.click() },
-      { label: "JSONで保存", action: () => xSaveJson(), enabled: () => Boolean(pStack) },
+      { label: "開く…", action: () => xStackFile.click() },
+      { label: "保存", action: () => fsSaveStack(), enabled: () => Boolean(pStack) },
       "-",
-      { label: "サンプルを開く", action: () => xOpenSample() }
+      { label: "サンプルを開く", action: () => fsOpenSample() }
     ]
   },
   {
     title: "編集",
+    visible: xInEdit,
     items: [
+      // 何を編集するか（カード・背景、部品・絵）を選ぶ。
+      { label: "カード編集", action: () => fsSetEditTarget("card", pPainting), checked: () => pEditLayer === "card" },
       {
-        label: "新規カード",
-        action: () => xNewCard(),
-        enabled: () => Boolean(pStack) && pStack.cards.length < MAX_CARDS
-      },
-      {
-        label: "カードを削除",
-        action: () => xDeleteCard(),
-        enabled: () => Boolean(pStack) && pStack.cards.length > 1
+        label: "背景編集",
+        action: () => fsSetEditTarget("background", pPainting),
+        checked: () => pEditLayer === "background"
       },
       "-",
-      {
-        label: "部品を削除",
-        action: () => xDeletePart(xSelectedPart()),
-        enabled: () => pEditing && Boolean(xSelectedPart())
-      },
+      { label: "部品編集", action: () => fsSetEditTarget(pEditLayer, false), checked: () => !pPainting },
+      { label: "描画編集", action: () => fsSetEditTarget(pEditLayer, true), checked: () => pPainting },
       "-",
       {
         label: "描画を取り消す",
         action: () => pPainter.undo(),
-        enabled: () => pPainting && (pPainter.canUndo || pPainter.placing)
+        visible: xInPaint,
+        enabled: () => pPainter.canUndo || pPainter.placing
       },
-      { label: "絵をすべて消す", action: () => xClearPicture(), enabled: () => pPainting && !pPainter.placing },
-      { label: "画像を取り込む…", action: () => xChooseImage(), enabled: () => Boolean(pStack) }
+      { label: "画像を取り込む…", action: () => fsChooseImage(), visible: xInPaint },
+      {
+        label: "部品を削除",
+        action: () => fsDeletePart(fsSelectedPart()),
+        visible: xInParts,
+        enabled: () => Boolean(fsSelectedPart())
+      },
+      "-",
+      {
+        label: "新規カード",
+        action: () => fsNewCard(),
+        enabled: () => Boolean(pStack) && pStack.cards.length < MAX_CARDS
+      },
+      {
+        label: "カード複製",
+        action: () => fsDuplicateCard(),
+        enabled: () => Boolean(pStack) && pStack.cards.length < MAX_CARDS
+      },
+      {
+        label: "カードを削除",
+        action: () => fsDeleteCard(),
+        enabled: () => Boolean(pStack) && pStack.cards.length > 1
+      },
+      "-",
+      { label: "新規スタック…", action: () => fsNewStack() }
+    ]
+  },
+  {
+    title: "ツール",
+    visible: xInEdit,
+    items: [
+      { label: "ボタン追加", action: () => fsAddPart("button"), visible: xInParts },
+      { label: "入力フィールド追加", action: () => fsAddPart("field"), visible: xInParts },
+      { label: "テキストエリア追加", action: () => fsAddPart("field", { lockText: true }), visible: xInParts },
+      "-",
+      {
+        label: "部品の情報…",
+        action: () => fsShowInfo("part"),
+        visible: xInParts,
+        enabled: () => Boolean(fsSelectedPart())
+      },
+      "-",
+      { label: "カード設定…", action: () => fsShowInfo("card") },
+      { label: "背景設定…", action: () => fsShowInfo("background") },
+      { label: "スタック設定…", action: () => fsShowInfo("stack") }
     ]
   },
   {
     title: "移動",
     items: [
-      { label: "戻る", action: () => xGoBack(), enabled: () => pHistory.length > 0 },
+      { label: "戻る", action: () => fsGoBack(), enabled: () => pHistory.length > 0 },
       "-",
-      { label: "最初のカード", action: () => xNavigate(0), enabled: () => pCardIndex > 0 },
-      { label: "前のカード", action: () => xNavigate(pCardIndex - 1), enabled: () => pCardIndex > 0 },
-      { label: "次のカード", action: () => xNavigate(pCardIndex + 1), enabled: () => xHasNextCard() },
-      { label: "最後のカード", action: () => xNavigate(pStack.cards.length - 1), enabled: () => xHasNextCard() },
+      { label: "最初のカード", action: () => fsNavigate(0), enabled: () => pCardIndex > 0 },
+      { label: "前のカード", action: () => fsNavigate(pCardIndex - 1), enabled: () => pCardIndex > 0 },
+      { label: "次のカード", action: () => fsNavigate(pCardIndex + 1), enabled: () => fsHasNextCard() },
+      { label: "最後のカード", action: () => fsNavigate(pStack.cards.length - 1), enabled: () => fsHasNextCard() }
+    ]
+  },
+  {
+    title: "スタック",
+    items: [
+      { label: "ブラウズ", action: () => fsSetTool("browse"), checked: () => !pEditing },
+      // 前に編集していた層（カードか背景）の部品の編集から始める。
+      { label: "エディット", action: () => fsSetEditTarget(pEditLayer, false), checked: () => pEditing },
       "-",
+      // 見るだけ。変えるのはエディット中のツールメニューの「スタック設定…」。
+      { label: "スタック情報", action: () => fsShowStackFacts(), enabled: () => Boolean(pStack) },
+      // メッセージボックスはブラウズ中だけ出す。
       {
         label: "メッセージボックス",
         action: () => {
           xMessageBox.hidden = !xMessageBox.hidden;
         },
+        visible: () => !pEditing,
         checked: () => !xMessageBox.hidden
       }
-    ]
-  },
-  {
-    title: "ツール",
-    items: [
-      { label: "ブラウズ", action: () => xSetTool("browse"), checked: () => !pEditing },
-      {
-        label: "カードを編集",
-        action: () => xSetTool("card"),
-        checked: () => pEditing && !pPainting && pEditLayer === "card"
-      },
-      {
-        label: "背景を編集",
-        action: () => xSetTool("background"),
-        checked: () => pEditing && !pPainting && pEditLayer === "background"
-      },
-      "-",
-      {
-        label: "カードに描く",
-        action: () => xSetTool("paint-card"),
-        checked: () => pPainting && pEditLayer === "card"
-      },
-      {
-        label: "背景に描く",
-        action: () => xSetTool("paint-background"),
-        checked: () => pPainting && pEditLayer === "background"
-      }
-    ]
-  },
-  {
-    title: "オブジェクト",
-    items: [
-      { label: "新規ボタン", action: () => xAddPart("button"), enabled: () => Boolean(pStack) },
-      { label: "新規フィールド", action: () => xAddPart("field"), enabled: () => Boolean(pStack) },
-      "-",
-      {
-        label: "部品の情報…",
-        action: () => xShowInfo("part"),
-        enabled: () => pEditing && Boolean(xSelectedPart())
-      },
-      { label: "カード情報…", action: () => xShowInfo("card"), enabled: () => Boolean(pStack) },
-      { label: "背景情報…", action: () => xShowInfo("background"), enabled: () => Boolean(pStack) },
-      { label: "スタック情報…", action: () => xShowInfo("stack"), enabled: () => Boolean(pStack) }
     ]
   }
 ]);
 
 // ---- 描画 ----
 
-function xHasNextCard() {
+const fsHasNextCard = () => {
   return Boolean(pStack) && pCardIndex < pStack.cards.length - 1;
-}
+};
 
-function xIsBackgroundEditing() {
+const fsIsBackgroundEditing = () => {
   return pEditing && pEditLayer === "background";
-}
+};
 
-function xUpdateTitles() {
-  const xCard = xCurrentCard();
+const fsUpdateTitles = () => {
+  const xCard = fsCurrentCard();
   const xPosition = `${pCardIndex + 1} / ${pStack.cards.length}`;
 
-  if (xIsBackgroundEditing()) {
+  if (fsIsBackgroundEditing()) {
     const xDoing = pPainting ? "背景に描画中" : "背景を編集中";
-    xCardName.textContent = `背景：${xCurrentBackground().name}`;
+    xCardName.textContent = `背景：${fsCurrentBackground().name}`;
     pMenuBar.setTitle(pStack.stack.name, `${xDoing}（${xCard.name}　${xPosition}）`);
   } else if (pPainting) {
     xCardName.textContent = `${xCard.name}（描画中）`;
@@ -345,42 +370,46 @@ function xUpdateTitles() {
     xCardName.textContent = xCard.name;
     pMenuBar.setTitle(pStack.stack.name, `${xCard.name}　${xPosition}`);
   }
-}
+};
 
-function xRenderCard() {
+const fsRenderCard = () => {
   if (!pStack) {
     return;
   }
 
   // 描画中は、カードを移動したら描く相手もそのカード（または背景）に変える。
   if (pPainting) {
-    pPainter.begin(xEditOwner(), xCardSize(pStack));
+    pPainter.begin(fsEditOwner(), fsCardSize(pStack));
   }
 
   xPaletteRoot.hidden = !pPainting;
 
   pCardView.render({
-    card: xCurrentCard(),
-    background: xCurrentBackground(),
+    card: fsCurrentCard(),
+    background: fsCurrentBackground(),
     editing: pEditing,
     painter: pPainting ? pPainter : null,
     layer: pEditLayer,
     selectedId: pSelectedId,
-    size: xCardSize(pStack)
+    size: fsCardSize(pStack)
   });
 
   // 背景の編集中は、オリジナルと同じくメニューバーを縞模様にして知らせる。
-  document.documentElement.dataset.editLayer = xIsBackgroundEditing() ? "background" : "";
+  document.documentElement.dataset.editLayer = fsIsBackgroundEditing() ? "background" : "";
   // 描画中は編集用の方眼を出さず、絵だけを見やすくする。
   xCardWindow.classList.toggle("is-editing", pEditing && !pPainting);
-  xUpdateTitles();
-}
+  // 編集中・描画中はメッセージボックスを出さない（中身と開閉の状態はブラウズに戻ったときに戻る）。
+  document.documentElement.toggleAttribute("data-editing", pEditing);
+  pMenuBar.update();
+  fsUpdateTitles();
+};
 
 // ---- カードの移動 ----
 
-// 切り替えの効果。visual effect の指定（effect）があればそれを、なければスタックの設定に従う。
+// 切り替えの効果。visual effect の指定（effect）があればそれを、
+// なければ移る先のカードの設定、カードが空ならスタックの設定に従う。
 // 編集中・描画中は効果を付けない。
-function xEffectFor(xIndex, xEffect) {
+const fsEffectFor = (xIndex, xEffect) => {
   if (pEditing || xIndex === pCardIndex || REDUCED_MOTION_QUERY.matches) {
     return null;
   }
@@ -389,27 +418,29 @@ function xEffectFor(xIndex, xEffect) {
     return xEffect.name === "plain" ? null : xEffect;
   }
 
-  if (pStack.stack.effect === "dissolve") {
+  const xName = pStack.cards[xIndex].effect || pStack.stack.effect;
+
+  if (xName === "dissolve") {
     return { name: "dissolve", speed: "normal" };
   }
 
-  if (pStack.stack.effect === "wipe") {
+  if (xName === "wipe") {
     return { name: xIndex > pCardIndex ? "wipe left" : "wipe right", speed: "normal" };
   }
 
   return null;
-}
+};
 
 // 閲覧中は closeCard / openCard を送る。
-async function xGoToCard(xIndex, xRemember = true, xEffect = null) {
+const fsGoToCard = async (xIndex, xRemember = true, xEffect = null) => {
   if (!pStack || xIndex < 0 || xIndex >= pStack.cards.length) {
     return;
   }
 
-  const xUseEffect = xEffectFor(xIndex, xEffect);
+  const xUseEffect = fsEffectFor(xIndex, xEffect);
 
   if (!pEditing) {
-    await pInterpreter.sendMessage("closeCard", xCardObject());
+    await pInterpreter.sendMessage("closeCard", fsCardObject());
   }
 
   if (xRemember && xIndex !== pCardIndex) {
@@ -418,28 +449,28 @@ async function xGoToCard(xIndex, xRemember = true, xEffect = null) {
 
   pCardIndex = xIndex;
   pSelectedId = null;
-  await pCardView.transition(xUseEffect, () => xRenderCard());
+  await pCardView.transition(xUseEffect, () => fsRenderCard());
 
   // 効果の途中で別のカードへ移っていたら、そちらの openCard に任せる。
   if (!pEditing && pCardIndex === xIndex) {
-    await pInterpreter.sendMessage("openCard", xCardObject());
+    await pInterpreter.sendMessage("openCard", fsCardObject());
   }
-}
+};
 
-async function xGoBack(xEffect = null) {
+const fsGoBack = async (xEffect = null) => {
   if (pHistory.length > 0) {
-    await xGoToCard(pHistory.pop(), false, xEffect);
+    await fsGoToCard(pHistory.pop(), false, xEffect);
   }
-}
+};
 
 // 画面の操作（メニュー・スワイプ・キー）からの移動。
-function xNavigate(xIndex) {
-  if (pStack && !xIsBusy()) {
-    xGoToCard(xIndex);
+const fsNavigate = (xIndex) => {
+  if (pStack && !fsIsBusy()) {
+    fsGoToCard(xIndex);
   }
-}
+};
 
-async function xOpenStack(xData, xMessage) {
+const fsOpenStack = async (xData, xMessage) => {
   pStack = xData;
   pCardIndex = 0;
   pSelectedId = null;
@@ -447,22 +478,23 @@ async function xOpenStack(xData, xMessage) {
   pInspector.close();
   pInterpreter.globals.clear();
   xMessageBox.textContent = "";
-  xRenderCard();
-  xSaveNow();
-  xShowStatus(xMessage);
+  fsRenderCard();
+  fsSaveNow();
+  fsShowStatus(xMessage);
 
   if (!pEditing) {
     await pInterpreter.sendMessage("openStack", { kind: "stack" });
-    await pInterpreter.sendMessage("openCard", xCardObject());
+    await pInterpreter.sendMessage("openCard", fsCardObject());
   }
-}
+};
 
 // ---- メニューの操作 ----
 
-// tool: "browse"（閲覧） / "card"（カードを編集） / "background"（背景を編集）
-//       / "paint-card"（カードに描く） / "paint-background"（背景に描く）
-function xSetTool(xTool) {
-  // 実行中のスクリプトは、ツールを選び直すと中断する。
+// tool: "browse"（閲覧） / "card"（カードの部品を編集） / "background"（背景の部品を編集）
+//       / "paint-card"（カードに絵を描く） / "paint-background"（背景に絵を描く）
+// メニューの「エディット」と、編集メニューの「カード編集」などは、fsSetEditTarget を通してここを呼ぶ。
+const fsSetTool = (xTool) => {
+  // 実行中のスクリプトは、ブラウズ・エディットを選び直すと中断する。
   pInterpreter.abort();
 
   const xEditing = xTool !== "browse";
@@ -481,80 +513,108 @@ function xSetTool(xTool) {
   pPainting = xPainting;
   pEditLayer = xLayer;
   pSelectedId = null;
-  xRenderCard();
+  fsRenderCard();
 
   if (xTool === "paint-background") {
-    xShowStatus("背景に描画中：ここで描いた絵は全カードに表示されます。");
+    fsShowStatus("背景に描画中：ここで描いた絵は全カードに表示されます。");
   } else if (xTool === "paint-card") {
-    xShowStatus("描画中：パレットで道具を選んで描きます。終わったら「完了」を押します。");
+    fsShowStatus("描画中：パレットで道具を選んで描きます。終わったら「完了」を押します。");
   } else if (xTool === "background") {
-    xShowStatus("背景を編集中：ここに置いた部品は全カードに表示されます。");
+    fsShowStatus("背景を編集中：ここに置いた部品は全カードに表示されます。");
   } else if (xTool === "card") {
-    xShowStatus("編集中：ドラッグで移動、右下の黒い四角で大きさを変更、部品を2回続けて押すと設定を開きます。");
+    fsShowStatus("編集中：ドラッグで移動、右下の黒い四角で大きさを変更、部品を2回続けて押すと設定を開きます。");
   } else {
-    xSaveNow();
-    xShowStatus("ブラウズに戻りました。");
+    fsSaveNow();
+    fsShowStatus("ブラウズに戻りました。");
   }
-}
+};
+
+const fsShowStackFacts = () => {
+  fsShowFacts("スタック情報", [
+    ["スタック名", pStack.stack.name],
+    ["ヴァージョン", pStack.stack.version],
+    ["作者", pStack.stack.author]
+  ]);
+};
 
 // 部品・カード・背景・スタックの設定をモーダルで開く。
-function xShowInfo(xTarget) {
-  const xPart = xSelectedPart();
+const fsShowInfo = (xTarget) => {
+  const xPart = fsSelectedPart();
 
   if (xTarget === "part" && xPart) {
-    pInspector.showPart(xPart, xCardSize(pStack), xCurrentCard(), pEditLayer === "background");
+    pInspector.showPart(xPart, fsCardSize(pStack), fsCurrentCard(), pEditLayer === "background");
   } else if (xTarget === "background") {
-    pInspector.showBackground(xCurrentBackground());
+    pInspector.showBackground(fsCurrentBackground());
   } else if (xTarget === "stack") {
     pInspector.showStack(pStack);
   } else if (xTarget === "card") {
-    pInspector.showCard(xCurrentCard());
+    pInspector.showCard(fsCurrentCard());
   }
-}
+};
 
 // 描画中でなければ、今の層（背景の編集中なら背景）の描画に切り替えてから画像を選ぶ。
-function xChooseImage() {
+const fsChooseImage = () => {
   if (!pPainting) {
-    xSetTool(pEditing && pEditLayer === "background" ? "paint-background" : "paint-card");
+    fsSetTool(pEditing && pEditLayer === "background" ? "paint-background" : "paint-card");
   }
 
   xImageFile.click();
-}
+};
 
-async function xClearPicture() {
-  const xWhere = pEditLayer === "background" ? "背景" : "このカード";
+// 文字を白黒のドットにして、取り込んだ画像と同じように枠で位置と大きさを決めて貼る。
+// 描画の道具パレットから呼ぶ。大きさ・フォント・太さは前に選んだものを次の既定にする。
+const fsPlaceText = async () => {
+  const xAnswerText = await fsAskText(
+    "絵として置く文字",
+    { sizes: TEXT_SIZES, fonts: Object.entries(TEXT_FONTS).map(([xName, xFont]) => [xName, xFont.label]) },
+    pTextOptions
+  );
 
-  if (await xConfirm(`${xWhere}の絵をすべて消しますか？\n（「描画を取り消す」で元に戻せます）`)) {
-    pPainter.clear();
-  }
-}
-
-async function xNewStack() {
-  if (pStack && !(await xConfirmReplace())) {
+  if (!xAnswerText || !pPainting) {
     return;
   }
 
-  const xName = await xAsk("新しいスタックの名前", "新しいスタック");
+  pTextOptions = { size: xAnswerText.size, font: xAnswerText.font, bold: xAnswerText.bold };
+  pPainter.placeImage(fsTextImage(xAnswerText.text, xAnswerText.size, xAnswerText.font, xAnswerText.bold), true);
+  fsShowStatus("枠をドラッグして位置を、右下の四角で大きさを決めて「貼り付け」を押します。");
+};
+
+const fsClearPicture = async () => {
+  const xWhere = pEditLayer === "background" ? "背景" : "このカード";
+
+  if (await fsConfirm(`${xWhere}の絵をすべて消しますか？\n（「描画を取り消す」で元に戻せます）`)) {
+    pPainter.clear();
+  }
+};
+
+const fsNewStack = async () => {
+  if (pStack && !(await fsConfirmReplace())) {
+    return;
+  }
+
+  const xName = await fsAsk("新しいスタックの名前", "新しいスタック");
 
   if (xName === null) {
     return;
   }
 
+  // 描画中から作ったときは、描きかけの状態を片付けてからカードの部品の編集で開く。
   pInterpreter.abort();
+  pPainter.end();
   pEditing = true;
   pPainting = false;
   pEditLayer = "card";
-  xOpenStack(StackIO.createEmpty(xName.trim() || "新しいスタック"), "新しいスタックを作成しました。");
-}
+  fsOpenStack(StackIO.createEmpty(xName.trim() || "新しいスタック"), "新しいスタックを作成しました。");
+};
 
-function xSaveJson() {
-  xSaveNow();
+const fsSaveStack = () => {
+  fsSaveNow();
   StackIO.download(pStack);
-  xShowStatus("JSONファイルを保存しました。");
-}
+  fsShowStatus("スタックを保存しました。");
+};
 
-async function xOpenSample() {
-  if (pStack && !(await xConfirmReplace())) {
+const fsOpenSample = async () => {
+  if (pStack && !(await fsConfirmReplace())) {
     return;
   }
 
@@ -563,34 +623,61 @@ async function xOpenSample() {
     pInterpreter.abort();
     pEditing = false;
     pPainting = false;
-    xOpenStack(xData, "サンプルを開きました。");
+    fsOpenStack(xData, "サンプルを開きました。");
   } catch (xError) {
-    xShowStatus(`読み込みエラー：${xError.message}`);
+    fsShowStatus(`読み込みエラー：${xError.message}`);
   }
-}
+};
 
-function xNewCard() {
-  if (pStack.cards.length >= MAX_CARDS) {
-    xShowStatus(`カードは${MAX_CARDS}枚までです。`);
+// カードの追加・削除は編集中（描画中を含む）だけ。ブラウズ中はメニューも押せない。
+const fsNewCard = () => {
+  if (!pEditing) {
     return;
   }
 
-  const xNewCardData = StackIO.createCard(xCurrentCard().backgroundId, `カード${pStack.cards.length + 1}`);
+  if (pStack.cards.length >= MAX_CARDS) {
+    fsShowStatus(`カードは${MAX_CARDS}枚までです。`);
+    return;
+  }
+
+  const xNewCardData = StackIO.createCard(fsCurrentCard().backgroundId, `カード${pStack.cards.length + 1}`);
 
   // 現在のカードの直後に追加する。
   pStack.cards.splice(pCardIndex + 1, 0, xNewCardData);
-  xSaveNow();
-  xGoToCard(pCardIndex + 1);
-  xShowStatus("カードを追加しました。");
-}
+  fsSaveNow();
+  fsGoToCard(pCardIndex + 1);
+  fsShowStatus("カードを追加しました。");
+};
 
-async function xDeleteCard() {
-  if (pStack.cards.length <= 1) {
-    xShowStatus("最後の1枚は削除できません。");
+// 今のカードを複製して、すぐ後ろに入れる。
+const fsDuplicateCard = () => {
+  if (!pEditing) {
     return;
   }
 
-  if (!(await xConfirm(`カード「${xCurrentCard().name}」を削除しますか？`))) {
+  if (pStack.cards.length >= MAX_CARDS) {
+    fsShowStatus(`カードは${MAX_CARDS}枚までです。`);
+    return;
+  }
+
+  const xCard = fsCurrentCard();
+  pStack.cards.splice(pCardIndex + 1, 0, StackIO.duplicateCard(xCard, `${xCard.name}のコピー`));
+  fsSaveNow();
+  fsGoToCard(pCardIndex + 1);
+  fsShowStatus(`「${xCard.name}」を複製しました。`);
+};
+
+const fsDeleteCard = async () => {
+  if (!pEditing) {
+    return;
+  }
+
+  if (pStack.cards.length <= 1) {
+    fsShowStatus("最後の1枚は削除できません。");
+    return;
+  }
+
+  if (!(await fsConfirm(`カード「${fsCurrentCard().name}」を削除しますか？`))) {
     return;
   }
 
@@ -598,31 +685,32 @@ async function xDeleteCard() {
   pCardIndex = Math.min(pCardIndex, pStack.cards.length - 1);
   pSelectedId = null;
   pHistory = [];
-  xRenderCard();
-  xSaveNow();
-  xShowStatus("カードを削除しました。");
-}
+  fsRenderCard();
+  fsSaveNow();
+  fsShowStatus("カードを削除しました。");
+};
 
-function xAddPart(xType) {
+// options は作った部品に上書きする設定（編集不可のフィールドなら { lockText: true }）。
+const fsAddPart = (xType, xOptions = {}) => {
   // ブラウズ中ならカードの編集に切り替える。編集中・描画中なら、その層の編集に切り替えて追加する。
   if (!pEditing || pPainting) {
-    xSetTool(pEditing ? pEditLayer : "card");
+    fsSetTool(pEditing ? pEditLayer : "card");
   }
 
-  const xPart = StackIO.createPart(xType, xEditOwner(), xCardSize(pStack));
-  xEditOwner().parts.push(xPart);
+  const xPart = { ...StackIO.createPart(xType, fsEditOwner(), fsCardSize(pStack)), ...xOptions };
+  fsEditOwner().parts.push(xPart);
   pSelectedId = xPart.id;
-  xRenderCard();
-  xSaveNow();
-  xShowStatus(`「${xPart.name}」を追加しました。`);
-}
+  fsRenderCard();
+  fsSaveNow();
+  fsShowStatus(`「${xPart.name}」を追加しました。`);
+};
 
-async function xDeletePart(xPart) {
-  if (!xPart || !(await xConfirm(`「${xPart.name}」を削除しますか？`))) {
+const fsDeletePart = async (xPart) => {
+  if (!xPart || !(await fsConfirm(`「${xPart.name}」を削除しますか？`))) {
     return;
   }
 
-  const xParts = xEditOwner().parts;
+  const xParts = fsEditOwner().parts;
   xParts.splice(xParts.indexOf(xPart), 1);
 
   // 背景のフィールドなら、各カードに保存していた中身も消す。
@@ -634,10 +722,10 @@ async function xDeletePart(xPart) {
 
   pSelectedId = null;
   pInspector.close();
-  xRenderCard();
-  xSaveNow();
-  xShowStatus("部品を削除しました。");
-}
+  fsRenderCard();
+  fsSaveNow();
+  fsShowStatus("部品を削除しました。");
+};
 
 xStackFile.addEventListener("change", async () => {
   const xFile = xStackFile.files?.[0];
@@ -645,7 +733,7 @@ xStackFile.addEventListener("change", async () => {
   // 同じファイルをもう一度選べるように選択を解除しておく。
   xStackFile.value = "";
 
-  if (!xFile || (pStack && !(await xConfirmReplace()))) {
+  if (!xFile || (pStack && !(await fsConfirmReplace()))) {
     return;
   }
 
@@ -654,9 +742,9 @@ xStackFile.addEventListener("change", async () => {
     pInterpreter.abort();
     pEditing = false;
     pPainting = false;
-    xOpenStack(xData, "スタックを読み込みました。");
+    fsOpenStack(xData, "スタックを読み込みました。");
   } catch (xError) {
-    xShowStatus(`読み込みエラー：${xError.message}`);
+    fsShowStatus(`読み込みエラー：${xError.message}`);
   }
 });
 
@@ -682,12 +770,12 @@ xImageFile.addEventListener("change", async () => {
   try {
     await xImage.decode();
   } catch {
-    xShowStatus("この画像は読み込めません。");
+    fsShowStatus("この画像は読み込めません。");
     return;
   }
 
   pPainter.placeImage(xImage);
-  xShowStatus("枠をドラッグして位置を、右下の四角で大きさを決めて「貼り付け」を押します。");
+  fsShowStatus("枠をドラッグして位置を、右下の四角で大きさを決めて「貼り付け」を押します。");
 });
 
 // パソコンでは左右の矢印キーでカードを移動する。
@@ -716,54 +804,54 @@ document.addEventListener("keydown", (xEvent) => {
     return;
   }
 
-  if (xEvent.key === "ArrowRight" && xHasNextCard()) {
-    xNavigate(pCardIndex + 1);
+  if (xEvent.key === "ArrowRight" && fsHasNextCard()) {
+    fsNavigate(pCardIndex + 1);
   } else if (xEvent.key === "ArrowLeft" && pCardIndex > 0) {
-    xNavigate(pCardIndex - 1);
+    fsNavigate(pCardIndex - 1);
   }
 });
 
 // タブを閉じる・アプリを切り替える直前に、保存待ちの変更を書き込む。
 window.addEventListener("pagehide", () => {
   if (pSaveTimer) {
-    xSaveNow();
+    fsSaveNow();
   }
 });
 
 // ---- 端末に合わせた画面の切り替え ----
 
-function xApplyDevice() {
+const fsApplyDevice = () => {
   const xMode = MOBILE_QUERY.matches ? "mobile" : "pc";
   document.documentElement.dataset.ui = xMode;
   pMenuBar.setMode(xMode);
 
   if (pStack) {
-    xUpdateTitles();
+    fsUpdateTitles();
   }
 
   pCardView.fit();
-}
+};
 
-MOBILE_QUERY.addEventListener("change", xApplyDevice);
+MOBILE_QUERY.addEventListener("change", fsApplyDevice);
 
-async function xInitialize() {
-  xApplyDevice();
-  xUnlockSound();
+const fsInitialize = async () => {
+  fsApplyDevice();
+  fsUnlockSound();
 
   const xSaved = StackIO.loadLocal();
 
   if (xSaved) {
-    xOpenStack(xSaved, "前回のスタックを開きました。");
+    fsOpenStack(xSaved, "前回のスタックを開きました。");
     return;
   }
 
   try {
     const xData = await StackIO.loadSample();
-    xOpenStack(xData, "スタックを読み込みました。");
+    fsOpenStack(xData, "スタックを読み込みました。");
   } catch (xError) {
-    xShowStatus(`起動エラー：${xError.message}`);
+    fsShowStatus(`起動エラー：${xError.message}`);
     xCardName.textContent = "スタックを開けません";
   }
-}
+};
 
-xInitialize();
+fsInitialize();
