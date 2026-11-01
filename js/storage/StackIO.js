@@ -24,7 +24,7 @@ const STACK_TYPE = "HycarPerdStack";
 export const CARD_EFFECTS = ["wipe", "dissolve", "none"];
 
 // ボタン・フィールドの文字の大きさ（ドット）。設定画面の選択肢と、スクリプトで指定できる範囲。
-export const PART_TEXT_SIZES = [12, 16, 18, 24];
+export const PART_TEXT_SIZES = [12, 14, 16, 18, 24];
 export const DEFAULT_PART_TEXT_SIZE = 16;
 export const PART_TEXT_SIZE_RANGE = [6, 96];
 
