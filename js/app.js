@@ -60,7 +60,7 @@ const fsSaveNow = () => {
   pSaveTimer = null;
 
   if (pStack && !StackIO.saveLocal(pStack)) {
-    fsShowStatus("ブラウザに保存できません。ファイルメニューの「保存」でファイルに保存してください。");
+    fsShowStatus("ブラウザに保存できません。ファイルメニューの「保存…」でファイルに保存してください。");
   }
 };
 
@@ -106,7 +106,7 @@ const fsConfirm = async (xMessage) => {
 // 現在のスタックはブラウザ内に1つしか保存しないため、置き換える前に確認する。
 const fsConfirmReplace = () => {
   return fsConfirm(
-    "現在のスタックは置き換えられます。\n残したい場合は先にファイルメニューの「保存」をしてください。\n続けますか？"
+    "現在のスタックは置き換えられます。\n残したい場合は先にファイルメニューの「保存…」をしてください。\n続けますか？"
   );
 };
 
@@ -239,7 +239,7 @@ const pMenuBar = new MenuBar(document.querySelector("#menubar"), [
     title: "ファイル",
     items: [
       { label: "開く…", action: () => xStackFile.click() },
-      { label: "保存", action: () => fsSaveStack(), enabled: () => Boolean(pStack) },
+      { label: "保存…", action: () => fsSaveStack(), enabled: () => Boolean(pStack) },
       "-",
       { label: "サンプルを開く", action: () => fsOpenSample() }
     ]
@@ -607,10 +607,46 @@ const fsNewStack = async () => {
   fsOpenStack(StackIO.createEmpty(xName.trim() || "新しいスタック"), "新しいスタックを作成しました。");
 };
 
-const fsSaveStack = () => {
-  fsSaveNow();
-  StackIO.download(pStack);
+// 名前を聞いてから、ブラウザのダウンロード先に保存する。
+const fsDownloadStack = async () => {
+  const xName = await fsAsk("保存するファイルの名前", StackIO.fileNameOf(pStack));
+
+  if (xName === null) {
+    return;
+  }
+
+  StackIO.download(pStack, StackIO.normalizeFileName(xName, pStack));
   fsShowStatus("スタックを保存しました。");
+};
+
+// 使える方法で保存する：PCは保存ダイアログ、スマホは共有シート、どちらも無ければ名前を聞いてダウンロード。
+// 保存ダイアログと共有シートは、メニューを押した操作の中で開く必要があるので、先に await しない。
+const fsSaveStack = async () => {
+  fsSaveNow();
+
+  try {
+    if (StackIO.canPickSaveFile()) {
+      const xFileName = await StackIO.saveWithPicker(pStack);
+
+      if (xFileName) {
+        fsShowStatus(`「${xFileName}」に保存しました。`);
+      }
+
+      return;
+    }
+
+    if (MOBILE_QUERY.matches && StackIO.canShare(pStack)) {
+      if (await StackIO.share(pStack)) {
+        fsShowStatus("スタックのファイルを渡しました。");
+      }
+
+      return;
+    }
+  } catch {
+    // 保存ダイアログや共有シートが使えなかったときは、ダウンロードで保存する。
+  }
+
+  await fsDownloadStack();
 };
 
 const fsOpenSample = async () => {

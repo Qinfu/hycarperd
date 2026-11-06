@@ -67,6 +67,21 @@ export const fsSetFieldText = (xPart, xCard, xIsBackground, xText) => {
   }
 };
 
+// 保存するファイルの名前の後ろに付ける文字。
+const FILE_SUFFIX = ".stack.json";
+
+const fsSafeFileName = (xName) => {
+  return String(xName ?? "").trim().replace(/[\\/:*?"<>|]/g, "_");
+};
+
+const fsStackBlob = (xData) => {
+  return new Blob([JSON.stringify(xData, null, 2)], { type: "application/json" });
+};
+
+const fsStackFile = (xData, xFileName) => {
+  return new File([fsStackBlob(xData)], xFileName, { type: "application/json" });
+};
+
 const fsCreateId = (xPrefix) => {
   const xRandom = Math.random().toString(36).slice(2, 8);
   return `${xPrefix}-${Date.now().toString(36)}-${xRandom}`;
@@ -212,15 +227,82 @@ export const StackIO = {
     }
   },
 
-  download(xData) {
-    const xText = JSON.stringify(xData, null, 2);
-    const xBlob = new Blob([xText], { type: "application/json" });
-    const xUrl = URL.createObjectURL(xBlob);
+  // ---- ファイルへの保存 ----
+  // 保存のしかたは3つ。どれが使えるかは端末とブラウザによる。
+  //   saveWithPicker：OSの「名前を付けて保存」で場所と名前を選ぶ（PCのChrome・Edge）
+  //   share         ：共有シートに渡し、「"ファイル"に保存」などで場所を選ぶ（スマホ）
+  //   download      ：ブラウザのダウンロード先に保存する（どこでも使える）
+  // saveWithPicker と share は、押した操作の中から await より前に呼ぶこと（ブラウザが操作なしの呼び出しを断るため）。
+
+  // ファイル名に使えない文字を除いた、既定のファイル名。
+  fileNameOf(xData) {
+    return `${fsSafeFileName(xData.stack.name) || "stack"}${FILE_SUFFIX}`;
+  },
+
+  // 入力されたファイル名を整える。空なら既定の名前、.json で終わらなければ .stack.json を付ける。
+  normalizeFileName(xName, xData) {
+    const xBaseName = fsSafeFileName(xName);
+
+    if (!xBaseName) {
+      return this.fileNameOf(xData);
+    }
+
+    return /\.json$/i.test(xBaseName) ? xBaseName : `${xBaseName}${FILE_SUFFIX}`;
+  },
+
+  canPickSaveFile() {
+    return typeof window.showSaveFilePicker === "function";
+  },
+
+  // 渡せるかどうかは名前と種類で決まるので、中身の無いファイルで確かめる。
+  canShare(xData) {
+    return typeof navigator.canShare === "function"
+      && navigator.canShare({ files: [new File([""], this.fileNameOf(xData), { type: "application/json" })] });
+  },
+
+  // 保存したファイル名を返す。キャンセルされたら null。
+  async saveWithPicker(xData) {
+    let xHandle;
+
+    try {
+      xHandle = await window.showSaveFilePicker({
+        suggestedName: this.fileNameOf(xData),
+        types: [{ description: "HycarPerdのスタック", accept: { "application/json": [".json"] } }]
+      });
+    } catch (xError) {
+      if (xError.name === "AbortError") {
+        return null;
+      }
+
+      throw xError;
+    }
+
+    const xWritable = await xHandle.createWritable();
+    await xWritable.write(fsStackBlob(xData));
+    await xWritable.close();
+    return xHandle.name;
+  },
+
+  // 共有シートを閉じたら true。キャンセルされたら false。
+  async share(xData) {
+    try {
+      await navigator.share({ files: [fsStackFile(xData, this.fileNameOf(xData))] });
+      return true;
+    } catch (xError) {
+      if (xError.name === "AbortError") {
+        return false;
+      }
+
+      throw xError;
+    }
+  },
+
+  download(xData, xFileName = this.fileNameOf(xData)) {
+    const xUrl = URL.createObjectURL(fsStackBlob(xData));
     const xLink = document.createElement("a");
-    const xBaseName = xData.stack.name.replace(/[\\/:*?"<>|]/g, "_") || "stack";
 
     xLink.href = xUrl;
-    xLink.download = `${xBaseName}.stack.json`;
+    xLink.download = xFileName;
     document.body.append(xLink);
     xLink.click();
     xLink.remove();
