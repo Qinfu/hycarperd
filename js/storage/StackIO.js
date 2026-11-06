@@ -15,7 +15,12 @@ const PART_DEFAULTS = {
   field: { label: "フィールド", width: 200, height: 80, style: "rectangle", script: "" }
 };
 
-const STORAGE_KEY = "hycarperd:stack";
+// テキストパーツは、文字を固定したフィールド。置くときの名前と、枠線のない透明なスタイルだけ変える。
+const TEXT_PART_DEFAULTS = { ...PART_DEFAULTS.field, label: "テキスト", style: "transparent" };
+
+// フィールドの文字の揃え。置いたとき・揃えを持たない古いスタックは左揃え。
+export const TEXT_ALIGNS = ["left", "center", "right"];
+
 const STACK_TYPE = "HycarPerdStack";
 
 // カードを切り替えるときの効果（スクリプトで visual effect を指定しなかったとき）。
@@ -87,16 +92,83 @@ const fsCreateId = (xPrefix) => {
   return `${xPrefix}-${Date.now().toString(36)}-${xRandom}`;
 };
 
-export const StackIO = {
-  async loadSample() {
-    const xResponse = await fetch("./stacks/sample.stack.json");
+// ---- 最後に開いたファイルの場所 ----
+// ブラウザはファイルのパスを教えないので、「開く」で選んだファイルの手がかり（FileSystemFileHandle）を
+// IndexedDB に残し、次に「開く」ときにそのフォルダから始める。スタックの中身は残さない。
 
-    if (!xResponse.ok) {
-      throw new Error("サンプルスタックを読み込めません。");
+const PLACE_DB_NAME = "hycarperd";
+const PLACE_STORE = "places";
+const LAST_FILE_KEY = "lastStackFile";
+const STACK_FILE_TYPES = [{ description: "HycarPerdのスタック", accept: { "application/json": [".json"] } }];
+
+let pLastStackFile = null;
+
+const fsOpenPlaceDb = () => new Promise((xResolve, xReject) => {
+  const xRequest = indexedDB.open(PLACE_DB_NAME, 1);
+  xRequest.onupgradeneeded = () => xRequest.result.createObjectStore(PLACE_STORE);
+  xRequest.onsuccess = () => xResolve(xRequest.result);
+  xRequest.onerror = () => xReject(xRequest.error);
+});
+
+// 覚えておけなくても開くことはできるので、失敗は無視する。
+const fsStorePlace = async (xHandle) => {
+  try {
+    const xDb = await fsOpenPlaceDb();
+    const xStore = xDb.transaction(PLACE_STORE, "readwrite").objectStore(PLACE_STORE);
+
+    if (xHandle) {
+      xStore.put(xHandle, LAST_FILE_KEY);
+    } else {
+      xStore.delete(LAST_FILE_KEY);
+    }
+  } catch {
+    // プライベートモードなどで IndexedDB が使えない。
+  }
+};
+
+// アプリに同梱したスタックを読み込む。
+const fsLoadBundled = async (xPath, xName) => {
+  const xResponse = await fetch(xPath);
+
+  if (!xResponse.ok) {
+    throw new Error(`${xName}を読み込めません。`);
+  }
+
+  return StackIO.validate(await xResponse.json());
+};
+
+export const StackIO = {
+  loadSample() {
+    return fsLoadBundled("./stacks/sample.stack.json", "サンプルスタック");
+  },
+
+  // 起動時に表示するホームのスタック。
+  loadHome() {
+    return fsLoadBundled("./stacks/HOME.stack.json", "ホームのスタック");
+  },
+
+  // スクリプトの go stack。このページ（index.html）から見たパスかURLで、Webサーバー上のスタックを読み込む。
+  // 名前が .json で終わらなければ .stack.json を付ける（"stacks/reference" → "stacks/reference.stack.json"）。
+  // ブラウザはパソコンの中のファイルを勝手に読ませないので、ローカルのパスは開けない。
+  async loadFromPath(xPath) {
+    const xFileName = /\.json$/i.test(xPath) ? xPath : `${xPath}${FILE_SUFFIX}`;
+    let xUrl;
+
+    try {
+      xUrl = new URL(xFileName, location.href);
+    } catch {
+      throw new Error(`「${xPath}」はパスとして読めません。`);
     }
 
-    const xData = await xResponse.json();
-    return this.validate(xData);
+    if (xUrl.protocol !== "http:" && xUrl.protocol !== "https:") {
+      throw new Error(`「${xPath}」は開けません（Webサーバー上のパスかURLだけ）。`);
+    }
+
+    try {
+      return await fsLoadBundled(xUrl.href, `「${xPath}」`);
+    } catch (xError) {
+      throw xError instanceof SyntaxError ? new Error(`「${xPath}」はスタックのファイルではありません。`) : xError;
+    }
   },
 
   async readFile(xFile) {
@@ -171,9 +243,12 @@ export const StackIO = {
   },
 
   // xOwner はカードまたは背景（どちらも parts を持つ）。
+  // xType は "button" / "field" / "text"。"text"（テキストパーツ）は文字を固定したフィールドとして作る。
   createPart(xType, xOwner, xSize) {
-    const xDefaults = PART_DEFAULTS[xType];
-    const xSameType = xOwner.parts.filter((xPart) => xPart.type === xType);
+    const xIsText = xType === "text";
+    const xPartType = xIsText ? "field" : xType;
+    const xDefaults = xIsText ? TEXT_PART_DEFAULTS : PART_DEFAULTS[xType];
+    const xSameType = xOwner.parts.filter((xPart) => xPart.type === xPartType && xPart.lockText === xIsText);
     let xNumber = xSameType.length + 1;
 
     while (xSameType.some((xPart) => xPart.name === `${xDefaults.label}${xNumber}`)) {
@@ -182,11 +257,14 @@ export const StackIO = {
 
     // 重ならないよう、既存の部品の数だけ少しずらして置く。
     const xOffset = (xOwner.parts.length % 8) * 12;
+    const xName = `${xDefaults.label}${xNumber}`;
 
     return {
-      id: fsCreateId(xType),
-      type: xType,
-      name: `${xDefaults.label}${xNumber}`,
+      id: fsCreateId(xPartType),
+      type: xPartType,
+      // name はスクリプトから部品を探すときの名前、label はボタンに表示する文字。
+      name: xName,
+      label: xName,
       left: Math.max(0, Math.round((xSize.width - xDefaults.width) / 2) - 24 + xOffset),
       top: Math.max(0, Math.round(xSize.height / 3) + xOffset),
       width: xDefaults.width,
@@ -194,37 +272,16 @@ export const StackIO = {
       text: "",
       style: xDefaults.style,
       visible: true,
-      lockText: false,
+      lockText: xIsText,
+      // テキストパーツの「スクリプト有効」。オフなら閲覧中に押しても選ばれず（枠線も出ず）、スクリプトも動かない
+      clickable: true,
+      textAlign: "left",
+      scrollbar: true,
       sharedText: false,
       textSize: DEFAULT_PART_TEXT_SIZE,
       sound: "",
       script: xDefaults.script
     };
-  },
-
-  // ブラウザ内に保存する。保存できない環境（プライベートモード等）ではfalseを返す。
-  saveLocal(xData) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(xData));
-      return true;
-    } catch {
-      return false;
-    }
-  },
-
-  // 保存済みのスタックがない、または壊れている場合はnullを返す。
-  loadLocal() {
-    try {
-      const xText = localStorage.getItem(STORAGE_KEY);
-
-      if (!xText) {
-        return null;
-      }
-
-      return this.validate(JSON.parse(xText));
-    } catch {
-      return null;
-    }
   },
 
   // ---- ファイルへの保存 ----
@@ -254,6 +311,58 @@ export const StackIO = {
     return typeof window.showSaveFilePicker === "function";
   },
 
+  // OSの「開く」が使えるか（PCのChrome・Edge）。使えなければ input の type="file" で選ぶ。
+  canPickOpenFile() {
+    return typeof window.showOpenFilePicker === "function";
+  },
+
+  // 前に「開く」で選んだファイルの手がかりを読み込んでおく。起動時に呼ぶ。
+  // 「開く」の画面は押した操作の中で開く必要があるので、そのときに待たなくて済むよう先に読んでおく。
+  async loadLastPlace() {
+    if (!this.canPickOpenFile()) {
+      return;
+    }
+
+    try {
+      const xDb = await fsOpenPlaceDb();
+      const xRequest = xDb.transaction(PLACE_STORE).objectStore(PLACE_STORE).get(LAST_FILE_KEY);
+      pLastStackFile = await new Promise((xResolve) => {
+        xRequest.onsuccess = () => xResolve(xRequest.result ?? null);
+        xRequest.onerror = () => xResolve(null);
+      });
+    } catch {
+      pLastStackFile = null;
+    }
+  },
+
+  // OSの「開く」でスタックのファイルを選ぶ。前にここで開いたファイルのあるフォルダから始める。
+  // 選んだファイル（File）を返す。キャンセルされたら null。
+  async pickOpenFile() {
+    const xOptions = { id: "hycarperd-stack", types: STACK_FILE_TYPES };
+    let xHandles;
+
+    try {
+      xHandles = await window.showOpenFilePicker(pLastStackFile ? { ...xOptions, startIn: pLastStackFile } : xOptions);
+    } catch (xError) {
+      if (xError.name === "AbortError") {
+        return null;
+      }
+
+      // 前のファイルが消えたなどで始める場所に使えないときは、忘れてから開き直す。
+      if (!pLastStackFile) {
+        throw xError;
+      }
+
+      pLastStackFile = null;
+      fsStorePlace(null);
+      return this.pickOpenFile();
+    }
+
+    pLastStackFile = xHandles[0];
+    fsStorePlace(xHandles[0]);
+    return xHandles[0].getFile();
+  },
+
   // 渡せるかどうかは名前と種類で決まるので、中身の無いファイルで確かめる。
   canShare(xData) {
     return typeof navigator.canShare === "function"
@@ -267,7 +376,7 @@ export const StackIO = {
     try {
       xHandle = await window.showSaveFilePicker({
         suggestedName: this.fileNameOf(xData),
-        types: [{ description: "HycarPerdのスタック", accept: { "application/json": [".json"] } }]
+        types: STACK_FILE_TYPES
       });
     } catch (xError) {
       if (xError.name === "AbortError") {
@@ -383,11 +492,14 @@ export const StackIO = {
         const xDefaults = PART_DEFAULTS[xPart.type];
         const xWidth = Math.min(Math.max(MIN_PART_SIZE, xNumber(xPart.width, xDefaults.width)), xCardWidth);
         const xHeight = Math.min(Math.max(MIN_PART_SIZE, xNumber(xPart.height, xDefaults.height)), xCardHeight);
+        const xName = xText(xPart.name, xDefaults.label);
 
         return {
           id: xText(xPart.id) || fsCreateId(xPart.type),
           type: xPart.type,
-          name: xText(xPart.name, xDefaults.label),
+          name: xName,
+          // 表示する文字を持たない古いスタックでは、これまでどおり名前を表示する。
+          label: typeof xPart.label === "string" ? xPart.label : xName,
           left: Math.min(Math.max(0, xNumber(xPart.left, 0)), xCardWidth - xWidth),
           top: Math.min(Math.max(0, xNumber(xPart.top, 0)), xCardHeight - xHeight),
           width: xWidth,
@@ -396,6 +508,9 @@ export const StackIO = {
           style: xText(xPart.style, xDefaults.style),
           visible: xPart.visible !== false,
           lockText: xPart.lockText === true,
+          clickable: xPart.clickable !== false,
+          textAlign: TEXT_ALIGNS.includes(xPart.textAlign) ? xPart.textAlign : "left",
+          scrollbar: xPart.scrollbar !== false,
           sharedText: xPart.sharedText === true,
           textSize: fsClampTextSize(xPart.textSize),
           // ボタンを押したときの音（空なら鳴らさない）

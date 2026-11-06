@@ -1,6 +1,6 @@
 import { ScriptError } from "./Lexer.js";
 import { fsParseScript } from "./Parser.js";
-import { MIN_PART_SIZE, fsBackgroundOf, fsClampTextSize, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
+import { MIN_PART_SIZE, TEXT_ALIGNS, fsBackgroundOf, fsClampTextSize, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
 
 // 無限ループで画面が固まらないよう、実行できる文の数に上限を設ける。
 const MAX_STEPS = 1_000_000;
@@ -12,6 +12,9 @@ const SYSTEM_MESSAGES = new Set([
 ]);
 
 const PART_LABELS = { button: "ボタン", field: "フィールド" };
+
+// open url で開けるURLの種類。
+const OPEN_URL_PROTOCOLS = ["http:", "https:", "mailto:", "tel:"];
 
 class AbortScript extends Error {}
 class ExitToTop extends Error {}
@@ -410,6 +413,19 @@ export class Interpreter {
         return null;
       }
 
+      // 別のスタックを開く。スタックが置き換わるので、このスクリプトはここで止める。
+      // 開けたかどうか（ファイルがない、保存していない変更の確認でやめた等）は画面側が知らせる。
+      case "goStack": {
+        const xPath = fsToText(await this.xEval(xStatement.path, xContext)).trim();
+
+        if (!xPath) {
+          throw new ScriptError("開くスタックのパスが空です。", xStatement.line);
+        }
+
+        this.host.goStack(xPath);
+        throw new ExitToTop();
+      }
+
       case "answer": {
         const xText = fsToText(await this.xEval(xStatement.value, xContext));
         const xButtons = [];
@@ -454,6 +470,43 @@ export class Interpreter {
 
         if (this.host.play(xName) === null) {
           throw new ScriptError(`「${xName}」という音はありません。`, xStatement.line);
+        }
+
+        return null;
+      }
+
+      // URL を別のページ（タブ）で開く。スタックから任意のスクリプトを動かせないよう、開けるのは
+      // http / https / mailto / tel だけ。相対URLはこのページの場所を基準にする。
+      case "openUrl": {
+        const xText = fsToText(await this.xEval(xStatement.url, xContext)).trim();
+        let xUrl = null;
+
+        try {
+          xUrl = new URL(xText, globalThis.location?.href);
+        } catch {
+          throw new ScriptError(`「${xText}」はURLとして読めません。`, xStatement.line);
+        }
+
+        if (!OPEN_URL_PROTOCOLS.includes(xUrl.protocol)) {
+          throw new ScriptError(`「${xUrl.protocol}」のURLは開けません（http / https / mailto / tel だけ）。`, xStatement.line);
+        }
+
+        this.host.openUrl(xUrl.href);
+        return null;
+      }
+
+      // メニュー項目を選んだときと同じことをする。項目の処理の終わりは待たずに次の行へ進む
+      // （ファイルを選ぶ画面は、押した操作の中で開く必要があるため）。
+      case "doMenu": {
+        const xLabel = fsToText(await this.xEval(xStatement.label, xContext)).trim();
+        const xState = this.host.doMenu(xLabel);
+
+        if (xState === "missing") {
+          throw new ScriptError(`「${xLabel}」というメニュー項目はありません。`, xStatement.line);
+        }
+
+        if (xState === "disabled") {
+          throw new ScriptError(`「${xLabel}」は今は選べません。`, xStatement.line);
         }
 
         return null;
@@ -873,6 +926,8 @@ export class Interpreter {
       switch (xProp) {
         case "name":
           return xPart.name;
+        case "label":
+          return xPart.label;
         case "text":
           return fsFieldText(xPart, xObject.card, xObject.isBackground);
         case "sharedtext":
@@ -881,10 +936,16 @@ export class Interpreter {
           return xPart.visible;
         case "locktext":
           return xPart.lockText;
+        case "clickable":
+          return xPart.clickable;
         case "style":
           return xPart.style;
         case "textsize":
           return xPart.textSize;
+        case "textalign":
+          return xPart.textAlign;
+        case "scrollbar":
+          return xPart.scrollbar;
         case "sound":
           return xPart.sound;
         case "left":
@@ -941,6 +1002,9 @@ export class Interpreter {
         case "name":
           xPart.name = fsToText(xValue);
           return;
+        case "label":
+          xPart.label = fsToText(xValue);
+          return;
         case "text":
           fsSetFieldText(xPart, xObject.card, xObject.isBackground, fsToText(xValue));
           return;
@@ -953,11 +1017,27 @@ export class Interpreter {
         case "locktext":
           xPart.lockText = fsToBoolean(xValue);
           return;
+        case "clickable":
+          xPart.clickable = fsToBoolean(xValue);
+          return;
         case "sound":
           xPart.sound = fsToText(xValue).trim().toLowerCase();
           return;
         case "textsize":
           xPart.textSize = fsClampTextSize(fsToNumber(xValue));
+          return;
+        case "textalign": {
+          const xAlign = fsToText(xValue).trim().toLowerCase();
+
+          if (!TEXT_ALIGNS.includes(xAlign)) {
+            throw new ScriptError(`textAlign は left / center / right のどれかです（「${fsToText(xValue)}」）。`);
+          }
+
+          xPart.textAlign = xAlign;
+          return;
+        }
+        case "scrollbar":
+          xPart.scrollbar = fsToBoolean(xValue);
           return;
         case "left":
         case "top":

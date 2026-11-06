@@ -16,7 +16,6 @@ const xStackFile = document.querySelector("#stack-file");
 const xPaletteRoot = document.querySelector("#paint-palette");
 const xImageFile = document.querySelector("#image-file");
 
-const SAVE_DELAY = 500;
 const MAX_HISTORY = 50;
 const TOAST_TIME = 2500;
 
@@ -27,12 +26,15 @@ const MOBILE_QUERY = matchMedia("(max-width: 600px), (pointer: coarse) and (max-
 const REDUCED_MOTION_QUERY = matchMedia("(prefers-reduced-motion: reduce)");
 
 let pStack = null;
+// 起動時に表示するホームのスタックを開いているか。ホームの変更は保存の対象にしない。
+let pIsHome = false;
+// ファイルに保存していない変更があるか。
+let pChanged = false;
 let pCardIndex = 0;
 let pEditing = false;
 let pPainting = false;
 let pEditLayer = "card";
 let pSelectedId = null;
-let pSaveTimer = null;
 let pToastTimer = null;
 let pHistory = [];
 let pImageUrl = "";
@@ -55,19 +57,12 @@ const fsShowMessage = (xText) => {
   xMessageBox.hidden = false;
 };
 
-const fsSaveNow = () => {
-  clearTimeout(pSaveTimer);
-  pSaveTimer = null;
-
-  if (pStack && !StackIO.saveLocal(pStack)) {
-    fsShowStatus("ブラウザに保存できません。ファイルメニューの「保存…」でファイルに保存してください。");
+// スタックはブラウザ内に保存しない。変更があったことだけを覚えておき、
+// スタックを置き換えるときやページを離れるときに確かめる。
+const fsMarkChanged = () => {
+  if (pStack && !pIsHome) {
+    pChanged = true;
   }
-};
-
-// 文字入力のたびに保存しないよう、少し待ってからまとめて保存する。
-const fsScheduleSave = () => {
-  clearTimeout(pSaveTimer);
-  pSaveTimer = setTimeout(fsSaveNow, SAVE_DELAY);
 };
 
 const fsCurrentCard = () => {
@@ -103,10 +98,10 @@ const fsConfirm = async (xMessage) => {
   return (await fsAnswer(xMessage, ["キャンセル", "OK"])) === "OK";
 };
 
-// 現在のスタックはブラウザ内に1つしか保存しないため、置き換える前に確認する。
-const fsConfirmReplace = () => {
-  return fsConfirm(
-    "現在のスタックは置き換えられます。\n残したい場合は先にファイルメニューの「保存…」をしてください。\n続けますか？"
+// ファイルに保存していない変更があるときだけ、スタックを置き換える前に確認する。
+const fsConfirmReplace = async () => {
+  return !pChanged || fsConfirm(
+    "保存していない変更は失われます。\n残したい場合は先にファイルメニューの「保存…」をしてください。\n続けますか？"
   );
 };
 
@@ -129,7 +124,7 @@ const pInterpreter = new Interpreter({
   goBack: (xEffect) => fsGoBack(xEffect),
   changed: () => {
     fsRenderCard();
-    fsScheduleSave();
+    fsMarkChanged();
   },
   getMessage: () => xMessageBox.textContent,
   setMessage: (xText) => fsShowMessage(xText),
@@ -137,6 +132,10 @@ const pInterpreter = new Interpreter({
   ask: (xText, xDefault) => fsAsk(xText, xDefault),
   beep: () => fsPlaySound(pStack.stack.beepSound),
   play: (xName) => (fsHasSound(xName) ? fsPlaySound(xName) : null),
+  doMenu: (xLabel) => pMenuBar.choose(xLabel),
+  goStack: (xPath) => fsGoStack(xPath),
+  // 開いたページから、このページを操作できないようにする。
+  openUrl: (xUrl) => window.open(xUrl, "_blank", "noopener,noreferrer"),
   reportError: (xError) => {
     const xWhere = [xError.where, xError.line ? `${xError.line}行目` : ""]
       .filter(Boolean)
@@ -167,24 +166,35 @@ const pCardView = new CardView(
     },
     onFieldInput: (xPart, xText, xIsBackground) => {
       fsSetFieldText(xPart, fsCurrentCard(), xIsBackground, xText);
-      fsScheduleSave();
+      fsMarkChanged();
     },
     onSwipe: (xDirection) => {
       fsNavigate(pCardIndex + (xDirection === "next" ? 1 : -1));
     },
     onContentInput: (xText) => {
       fsEditOwner().content = xText;
-      fsScheduleSave();
+      fsMarkChanged();
     },
     onSelect: (xPartId) => {
       pSelectedId = xPartId;
     },
+    // ダブルクリックした部品は、同じ層の一番上（最前面）に移してから情報を開く。
     onPartOpen: (xPart) => {
+      const xParts = fsEditOwner().parts;
+      const xIndex = xParts.indexOf(xPart);
+
+      if (xIndex >= 0 && xIndex < xParts.length - 1) {
+        xParts.splice(xIndex, 1);
+        xParts.push(xPart);
+        fsRenderCard();
+        fsMarkChanged();
+      }
+
       pSelectedId = xPart.id;
       fsShowInfo("part");
     },
     onPartMoved: () => {
-      fsScheduleSave();
+      fsMarkChanged();
     }
   }
 );
@@ -195,17 +205,16 @@ const pInspector = new Inspector({
       fsRenderCard();
     }
 
-    fsScheduleSave();
+    fsMarkChanged();
   },
-  onDeletePart: (xPart) => fsDeletePart(xPart),
-  onClose: () => fsSaveNow()
+  onDeletePart: (xPart) => fsDeletePart(xPart)
 });
 
 // 描画中は pEditing も true にして、スクリプトを動かさない（openCard なども送らない）。
 const pPainter = new Painter({
   onChange: (xOwner, xPicture) => {
     xOwner.picture = xPicture;
-    fsScheduleSave();
+    fsMarkChanged();
   },
   onState: () => pPalette?.update()
 });
@@ -214,6 +223,10 @@ const pPalette = new PaintPalette(xPaletteRoot, pPainter, {
   onText: () => fsPlaceText(),
   onClear: () => fsClearPicture(),
   onUndo: () => pPainter.undo(),
+  onCopy: () => {
+    pPainter.copySelection();
+    fsShowStatus("今の位置に写しを残しました。枠を動かして置き場所を決めてください。");
+  },
   // 「完了」で絵を描くのを終え、同じ層の部品の編集に戻る。
   onDone: () => fsSetEditTarget(pEditLayer, false),
   onLayout: () => pCardView.fit()
@@ -238,7 +251,7 @@ const pMenuBar = new MenuBar(document.querySelector("#menubar"), [
   {
     title: "ファイル",
     items: [
-      { label: "開く…", action: () => xStackFile.click() },
+      { label: "開く…", action: () => fsChooseStackFile() },
       { label: "保存…", action: () => fsSaveStack(), enabled: () => Boolean(pStack) },
       "-",
       { label: "サンプルを開く", action: () => fsOpenSample() }
@@ -298,7 +311,7 @@ const pMenuBar = new MenuBar(document.querySelector("#menubar"), [
     items: [
       { label: "ボタン追加", action: () => fsAddPart("button"), visible: xInParts },
       { label: "入力フィールド追加", action: () => fsAddPart("field"), visible: xInParts },
-      { label: "テキストエリア追加", action: () => fsAddPart("field", { lockText: true }), visible: xInParts },
+      { label: "テキストパーツ追加", action: () => fsAddPart("text"), visible: xInParts },
       "-",
       {
         label: "部品の情報…",
@@ -470,17 +483,22 @@ const fsNavigate = (xIndex) => {
   }
 };
 
-const fsOpenStack = async (xData, xMessage) => {
+// message が空ならお知らせを出さない。isHome はホームのスタックを開くときだけ true。
+const fsOpenStack = async (xData, xMessage, xIsHome = false) => {
   pStack = xData;
+  pIsHome = xIsHome;
   pCardIndex = 0;
   pSelectedId = null;
   pHistory = [];
   pInspector.close();
   pInterpreter.globals.clear();
   xMessageBox.textContent = "";
+  pChanged = false;
   fsRenderCard();
-  fsSaveNow();
-  fsShowStatus(xMessage);
+
+  if (xMessage) {
+    fsShowStatus(xMessage);
+  }
 
   if (!pEditing) {
     await pInterpreter.sendMessage("openStack", { kind: "stack" });
@@ -524,7 +542,6 @@ const fsSetTool = (xTool) => {
   } else if (xTool === "card") {
     fsShowStatus("編集中：ドラッグで移動、右下の黒い四角で大きさを変更、部品を2回続けて押すと設定を開きます。");
   } else {
-    fsSaveNow();
     fsShowStatus("ブラウズに戻りました。");
   }
 };
@@ -588,7 +605,7 @@ const fsClearPicture = async () => {
 };
 
 const fsNewStack = async () => {
-  if (pStack && !(await fsConfirmReplace())) {
+  if (!(await fsConfirmReplace())) {
     return;
   }
 
@@ -616,19 +633,19 @@ const fsDownloadStack = async () => {
   }
 
   StackIO.download(pStack, StackIO.normalizeFileName(xName, pStack));
+  pChanged = false;
   fsShowStatus("スタックを保存しました。");
 };
 
 // 使える方法で保存する：PCは保存ダイアログ、スマホは共有シート、どちらも無ければ名前を聞いてダウンロード。
 // 保存ダイアログと共有シートは、メニューを押した操作の中で開く必要があるので、先に await しない。
 const fsSaveStack = async () => {
-  fsSaveNow();
-
   try {
     if (StackIO.canPickSaveFile()) {
       const xFileName = await StackIO.saveWithPicker(pStack);
 
       if (xFileName) {
+        pChanged = false;
         fsShowStatus(`「${xFileName}」に保存しました。`);
       }
 
@@ -637,6 +654,7 @@ const fsSaveStack = async () => {
 
     if (MOBILE_QUERY.matches && StackIO.canShare(pStack)) {
       if (await StackIO.share(pStack)) {
+        pChanged = false;
         fsShowStatus("スタックのファイルを渡しました。");
       }
 
@@ -650,7 +668,7 @@ const fsSaveStack = async () => {
 };
 
 const fsOpenSample = async () => {
-  if (pStack && !(await fsConfirmReplace())) {
+  if (!(await fsConfirmReplace())) {
     return;
   }
 
@@ -680,7 +698,7 @@ const fsNewCard = () => {
 
   // 現在のカードの直後に追加する。
   pStack.cards.splice(pCardIndex + 1, 0, xNewCardData);
-  fsSaveNow();
+  fsMarkChanged();
   fsGoToCard(pCardIndex + 1);
   fsShowStatus("カードを追加しました。");
 };
@@ -698,7 +716,7 @@ const fsDuplicateCard = () => {
 
   const xCard = fsCurrentCard();
   pStack.cards.splice(pCardIndex + 1, 0, StackIO.duplicateCard(xCard, `${xCard.name}のコピー`));
-  fsSaveNow();
+  fsMarkChanged();
   fsGoToCard(pCardIndex + 1);
   fsShowStatus(`「${xCard.name}」を複製しました。`);
 };
@@ -722,22 +740,22 @@ const fsDeleteCard = async () => {
   pSelectedId = null;
   pHistory = [];
   fsRenderCard();
-  fsSaveNow();
+  fsMarkChanged();
   fsShowStatus("カードを削除しました。");
 };
 
-// options は作った部品に上書きする設定（編集不可のフィールドなら { lockText: true }）。
-const fsAddPart = (xType, xOptions = {}) => {
+// xType は "button" / "field" / "text"（テキストパーツ）。
+const fsAddPart = (xType) => {
   // ブラウズ中ならカードの編集に切り替える。編集中・描画中なら、その層の編集に切り替えて追加する。
   if (!pEditing || pPainting) {
     fsSetTool(pEditing ? pEditLayer : "card");
   }
 
-  const xPart = { ...StackIO.createPart(xType, fsEditOwner(), fsCardSize(pStack)), ...xOptions };
+  const xPart = StackIO.createPart(xType, fsEditOwner(), fsCardSize(pStack));
   fsEditOwner().parts.push(xPart);
   pSelectedId = xPart.id;
   fsRenderCard();
-  fsSaveNow();
+  fsMarkChanged();
   fsShowStatus(`「${xPart.name}」を追加しました。`);
 };
 
@@ -759,17 +777,30 @@ const fsDeletePart = async (xPart) => {
   pSelectedId = null;
   pInspector.close();
   fsRenderCard();
-  fsSaveNow();
+  fsMarkChanged();
   fsShowStatus("部品を削除しました。");
 };
 
-xStackFile.addEventListener("change", async () => {
-  const xFile = xStackFile.files?.[0];
+// スクリプトの go stack。Webサーバー上のスタックを開く（スクリプトはその前に止まっている）。
+const fsGoStack = async (xPath) => {
+  if (!(await fsConfirmReplace())) {
+    return;
+  }
 
-  // 同じファイルをもう一度選べるように選択を解除しておく。
-  xStackFile.value = "";
+  try {
+    const xData = await StackIO.loadFromPath(xPath);
+    pInterpreter.abort();
+    pEditing = false;
+    pPainting = false;
+    fsOpenStack(xData, `「${xData.stack.name}」を開きました。`);
+  } catch (xError) {
+    fsShowStatus(`スタックを開けません：${xError.message}`);
+  }
+};
 
-  if (!xFile || (pStack && !(await fsConfirmReplace()))) {
+// 選んだファイルのスタックを開く。
+const fsOpenStackFile = async (xFile) => {
+  if (!(await fsConfirmReplace())) {
     return;
   }
 
@@ -781,6 +812,36 @@ xStackFile.addEventListener("change", async () => {
     fsOpenStack(xData, "スタックを読み込みました。");
   } catch (xError) {
     fsShowStatus(`読み込みエラー：${xError.message}`);
+  }
+};
+
+// ファイルメニューの「開く…」。PCのChrome・Edgeは、前に開いたファイルのあるフォルダから選べるOSの画面を使う。
+// どちらの画面も押した操作の中で開く必要があるので、先に await しない。
+const fsChooseStackFile = async () => {
+  if (!StackIO.canPickOpenFile()) {
+    xStackFile.click();
+    return;
+  }
+
+  try {
+    const xFile = await StackIO.pickOpenFile();
+
+    if (xFile) {
+      await fsOpenStackFile(xFile);
+    }
+  } catch (xError) {
+    fsShowStatus(`ファイルを開けません：${xError.message}`);
+  }
+};
+
+xStackFile.addEventListener("change", () => {
+  const xFile = xStackFile.files?.[0];
+
+  // 同じファイルをもう一度選べるように選択を解除しておく。
+  xStackFile.value = "";
+
+  if (xFile) {
+    fsOpenStackFile(xFile);
   }
 });
 
@@ -829,6 +890,13 @@ document.addEventListener("keydown", (xEvent) => {
     return;
   }
 
+  // 選択した範囲を浮かせている間は、Delete / Backspace で削除する。
+  if (pPainter.selecting && (xEvent.key === "Delete" || xEvent.key === "Backspace")) {
+    xEvent.preventDefault();
+    pPainter.deleteSelection();
+    return;
+  }
+
   // 描画中は ⌘Z（Ctrl+Z）で取り消す。
   if (pPainting && (xEvent.metaKey || xEvent.ctrlKey) && xEvent.key.toLowerCase() === "z") {
     xEvent.preventDefault();
@@ -847,10 +915,11 @@ document.addEventListener("keydown", (xEvent) => {
   }
 });
 
-// タブを閉じる・アプリを切り替える直前に、保存待ちの変更を書き込む。
-window.addEventListener("pagehide", () => {
-  if (pSaveTimer) {
-    fsSaveNow();
+// ファイルに保存していない変更があるときは、ページを離れる前にブラウザに確かめてもらう。
+window.addEventListener("beforeunload", (xEvent) => {
+  if (pChanged) {
+    xEvent.preventDefault();
+    xEvent.returnValue = "";
   }
 });
 
@@ -870,20 +939,14 @@ const fsApplyDevice = () => {
 
 MOBILE_QUERY.addEventListener("change", fsApplyDevice);
 
+// 起動時はホームのスタックを表示する。そこから doMenu や go stack でスタックを開く。
 const fsInitialize = async () => {
   fsApplyDevice();
   fsUnlockSound();
-
-  const xSaved = StackIO.loadLocal();
-
-  if (xSaved) {
-    fsOpenStack(xSaved, "前回のスタックを開きました。");
-    return;
-  }
+  StackIO.loadLastPlace();
 
   try {
-    const xData = await StackIO.loadSample();
-    fsOpenStack(xData, "スタックを読み込みました。");
+    fsOpenStack(await StackIO.loadHome(), "", true);
   } catch (xError) {
     fsShowStatus(`起動エラー：${xError.message}`);
     xCardName.textContent = "スタックを開けません";

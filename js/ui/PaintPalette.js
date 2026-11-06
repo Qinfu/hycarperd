@@ -9,7 +9,8 @@ const TOOL_INFO = {
   line: { label: "直線", icon: '<path d="M4 20L20 4"/>' },
   rect: { label: "四角", icon: '<rect x="4" y="6" width="16" height="12"/>' },
   oval: { label: "楕円", icon: '<ellipse cx="12" cy="12" rx="8" ry="6"/>' },
-  fill: { label: "塗りつぶし", icon: '<path d="M4 11l7-7 8 8-7 7zM4 11h15M20 14c1 2 2 4 0 6"/>' }
+  fill: { label: "塗りつぶし", icon: '<path d="M4 11l7-7 8 8-7 7zM4 11h15M20 14c1 2 2 4 0 6"/>' },
+  select: { label: "選択（囲んだ範囲を動かす・コピー・削除）", icon: '<rect x="4" y="5" width="16" height="14" stroke-dasharray="3 2"/>' }
 };
 
 // 消しゴムをこの時間（ミリ秒）のうちに2回押すと、絵をすべて消す。
@@ -31,10 +32,12 @@ const PATTERN_INFO = {
 /*
  * 描画中だけ出す道具パレット（PCはカードの左、スマホはカードの下）。
  * 画像を取り込んでいる間は、道具の代わりに明るさ・コントラストと「貼り付け」を出す。
+ * 選択の道具で囲んだ範囲を浮かせている間は、明るさ・コントラストの代わりに「コピー」「削除」を出す。
  * handlers:
  *   onText()   文字を絵として置く
  *   onClear()  絵をすべて消す（消しゴムを2回続けて押した）
  *   onUndo()   取り消し
+ *   onCopy()   浮かせている範囲の写しを今の位置に残す
  *   onDone()   描画を終える（部品の編集に戻る）
  *   onLayout() パレットの大きさが変わった（模様と太さの入れ替え、取り込み中の切り替え）
  */
@@ -145,7 +148,23 @@ export class PaintPalette {
     xPaste.textContent = "貼り付け";
     xPaste.addEventListener("click", () => this.painter.pasteImage());
     xButtons.append(xCancel, xPaste);
-    xPane.append(xButtons);
+
+    // 選択した範囲だけに使うボタン。
+    const xSelectButtons = document.createElement("div");
+    const xCopy = document.createElement("button");
+    const xDelete = document.createElement("button");
+    xSelectButtons.className = "paint-import-buttons";
+    xCopy.type = "button";
+    xCopy.textContent = "コピー";
+    xCopy.title = "今の位置に写しを残す（浮かせた方は続けて動かせる）";
+    xCopy.addEventListener("click", () => this.handlers.onCopy());
+    xDelete.type = "button";
+    xDelete.textContent = "削除";
+    xDelete.addEventListener("click", () => this.painter.deleteSelection());
+    xSelectButtons.append(xCopy, xDelete);
+    this.selectButtons = xSelectButtons;
+
+    xPane.append(xSelectButtons, xButtons);
     return xPane;
   }
 
@@ -182,18 +201,23 @@ export class PaintPalette {
     }
 
     const xFilling = this.painter.tool === "fill";
+    // 選択の道具には、太さも模様も関係ない。
+    const xChoosing = this.painter.tool === "select";
     const xPlacing = this.painter.placing;
-    const xLayout = `${xFilling}:${xPlacing}:${this.painter.placingText}`;
+    const xSelecting = this.painter.selecting;
+    const xLayout = `${xFilling}:${xPlacing}:${this.painter.placingText}:${xSelecting}:${xChoosing}`;
 
     this.toolGroup.hidden = xPlacing;
     this.actionGroup.hidden = xPlacing;
-    this.sizeGroup.hidden = xPlacing || xFilling;
+    this.sizeGroup.hidden = xPlacing || xFilling || xChoosing;
     this.patternGroup.hidden = xPlacing || !xFilling;
     this.importPane.hidden = !xPlacing;
-    this.importPane.setAttribute("aria-label", this.painter.placingText ? "文字の配置" : "画像の取り込み");
+    this.importPane.setAttribute("aria-label",
+      xSelecting ? "選択した範囲" : this.painter.placingText ? "文字の配置" : "画像の取り込み");
+    this.selectButtons.hidden = !xSelecting;
 
     for (const xSlider of this.sliders) {
-      xSlider.hidden = this.painter.placingText;
+      xSlider.hidden = this.painter.placingText || xSelecting;
     }
     this.undoButton.disabled = !this.painter.canUndo;
 

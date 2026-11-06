@@ -57,7 +57,7 @@ const RESERVED = new Set(["then", "else", "end"]);
 
 // 「the X of」のXのうち、オブジェクトのプロパティとして扱うもの。
 export const PROPERTIES = new Set([
-  "name", "text", "visible", "locktext", "sharedtext", "style", "textsize", "sound",
+  "name", "label", "text", "visible", "locktext", "clickable", "sharedtext", "style", "textsize", "textalign", "scrollbar", "sound",
   "left", "top", "width", "height", "id", "number", "script"
 ]);
 
@@ -406,6 +406,15 @@ class ScriptParser {
           return { k: "go", line: xLine, back: true };
         }
 
+        // go stack "stacks/reference"。このページと同じ場所にあるスタックのファイルを開く。
+        if (xStream.acceptWord("stack")) {
+          if (!this.xHasArgument(xStream)) {
+            throw new ScriptError("go stack のあとに開くスタックのパスを書いてください（例：go stack \"stacks/reference\"）。", xLine);
+          }
+
+          return { k: "goStack", line: xLine, path: this.parseExpr(xStream) };
+        }
+
         return { k: "go", line: xLine, ref: this.parseCardTarget(xStream) };
       }
 
@@ -466,6 +475,22 @@ class ScriptParser {
         }
 
         return { k: "play", line: xLine, sound: this.parseExpr(xStream) };
+
+      // doMenu "サンプルを開く"。メニュー項目の名前は式で書ける。
+      case "domenu":
+        if (!this.xHasArgument(xStream)) {
+          throw new ScriptError("doMenu のあとにメニュー項目の名前を書いてください（例：doMenu \"開く…\"）。", xLine);
+        }
+
+        return { k: "doMenu", line: xLine, label: this.parseExpr(xStream) };
+
+      // open url "https://example.com"。URL は式で書ける。
+      case "open":
+        if (!xStream.acceptWord("url") || !this.xHasArgument(xStream)) {
+          throw new ScriptError("open url のあとに開くURLを書いてください（例：open url \"https://example.com\"）。", xLine);
+        }
+
+        return { k: "openUrl", line: xLine, url: this.parseExpr(xStream) };
 
       case "wait": {
         xStream.acceptWord("for");

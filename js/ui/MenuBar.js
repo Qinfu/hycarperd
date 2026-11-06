@@ -54,6 +54,28 @@ export class MenuBar {
     }
   }
 
+  // スクリプトの doMenu から、名前でメニュー項目を選ぶ。今は出ていないメニューの項目も選べる。
+  // 名前の末尾の「…」「...」は省いてもよい。
+  // 選べたら "done"、見つからなければ "missing"、選べない状態なら "disabled" を返す。
+  choose(xLabel) {
+    const fsNormalize = (xText) => xText.trim().replace(/(…|\.\.\.)$/, "");
+    const xItem = this.menus
+      .flatMap((xMenu) => xMenu.items)
+      .find((xEntry) => xEntry !== "-" && fsNormalize(xEntry.label) === fsNormalize(xLabel));
+
+    if (!xItem) {
+      return "missing";
+    }
+
+    if (!(xItem.enabled?.() ?? true)) {
+      return "disabled";
+    }
+
+    this.close();
+    xItem.action();
+    return "done";
+  }
+
   // 出すメニューと、その元の番号。項目が1つも出ないメニューも出さない。
   xVisibleMenus() {
     return this.menus

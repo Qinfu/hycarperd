@@ -506,6 +506,27 @@ div.card-content {
   overflow-wrap: anywhere;
 }
 
+/* スクリプト無効のテキストパーツ。押しても選ばず、文字も選べない。 */
+.part-field.is-unclickable {
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* スクロールバーを出さないフィールド。ホイールや指でのスクロールはできる。 */
+.part-field.is-no-scrollbar {
+  scrollbar-width: none;
+}
+
+.part-field.is-no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* ラベルが空のボタン（絵の上に置く押せる範囲）は、押したとき下の絵が透けるよう半分だけ暗くする。 */
+.part-button.is-unlabeled:active:not(:disabled) {
+  background: rgba(0, 0, 0, 0.5);
+}
+
 .part.style-shadow {
   box-shadow: 2px 2px 0 var(--hc-black);
 }
@@ -727,6 +748,14 @@ div.card-content {
   outline: 2px dashed var(--hc-black);
   box-shadow: 0 0 0 2px var(--hc-white);
   cursor: move;
+}
+
+/* 選択の道具でドラッグしている間の、囲む範囲。 */
+.paint-marquee {
+  position: absolute;
+  outline: 1px dashed var(--hc-black);
+  box-shadow: 0 0 0 1px var(--hc-white);
+  pointer-events: none;
 }
 
 /* 画像がカードいっぱいでも押せるよう、四角は枠の内側の角に置く。 */

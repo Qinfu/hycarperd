@@ -1,5 +1,5 @@
 // 描画の道具と線の太さ（ドット）。
-export const PAINT_TOOLS = ["pencil", "eraser", "line", "rect", "oval", "fill"];
+export const PAINT_TOOLS = ["pencil", "eraser", "line", "rect", "oval", "fill", "select"];
 export const PAINT_SIZES = [1, 2, 4];
 
 // 絵のドットの値。白は透明と違い、下の層を隠す。
@@ -28,6 +28,22 @@ const SHAPE_TOOLS = new Set(["line", "rect", "oval"]);
 // 取り込んだ画像を置くときの最小の幅と、カードの幅に対する最大の倍率。
 const MIN_IMAGE_SIZE = 16;
 const MAX_IMAGE_SCALE = 4;
+
+// 選んで浮かせたドットを、ぼかさずに（一番近いドットを使って）拡大・縮小する。
+const fsScaleDots = (xSource, xWidth, xHeight) => {
+  const xDots = new Uint8Array(xWidth * xHeight);
+
+  for (let xY = 0; xY < xHeight; xY += 1) {
+    const xSy = Math.min(xSource.height - 1, Math.floor((xY * xSource.height) / xHeight));
+
+    for (let xX = 0; xX < xWidth; xX += 1) {
+      const xSx = Math.min(xSource.width - 1, Math.floor((xX * xSource.width) / xWidth));
+      xDots[xY * xWidth + xX] = xSource.dots[xSy * xSource.width + xSx];
+    }
+  }
+
+  return xDots;
+};
 
 // 明るさ・コントラスト（どちらも -100〜100）を灰色の値（0〜255）に当てはめる。
 export const fsAdjustLevel = (xGray, xBrightness, xContrast) => {
@@ -118,6 +134,8 @@ export const fsTextImage = (xText, xSize, xFontName, xBold) => {
  *
  * 画像の取り込み（placeImage）中は、ディザで白黒にした画像を枠付きで重ねて見せ、
  * 枠のドラッグで移動、右下の四角で大きさを変えられる。pasteImage で絵に書き込む。
+ * 選択の道具で囲んだ範囲も、そのドットを絵から切り取って同じ枠で動かす（selecting）。
+ * copySelection で今の位置に写しを残し、deleteSelection で捨てる。
  *
  * handlers:
  *   onChange(owner, picture)  1回描き終えた（picture はPNGのデータURL。何もなければ空文字）
@@ -157,6 +175,10 @@ export class Painter {
     this.frameHandle = document.createElement("div");
     this.frameHandle.className = "paint-placement-handle";
     this.frame.append(this.frameHandle);
+
+    // 選択の道具でドラッグしている間の、囲む範囲の点線。
+    this.marquee = document.createElement("div");
+    this.marquee.className = "paint-marquee";
   }
 
   get canUndo() {
@@ -170,6 +192,11 @@ export class Painter {
   // 置いているのが文字か（文字には明るさ・コントラストを使わない）。
   get placingText() {
     return Boolean(this.placement?.isText);
+  }
+
+  // 選択の道具で囲んだ範囲を浮かせているか（明るさ・コントラストは使わず、コピー・削除ができる）。
+  get selecting() {
+    return Boolean(this.placement?.source);
   }
 
   // 画像を取り込んで、貼る前の調整を始める。小さな画像は元の大きさ、大きな画像はカードに収まる大きさで中央に置く。
@@ -196,6 +223,7 @@ export class Painter {
       brightness: 0,
       contrast: 0,
       isText: xIsText,
+      source: null,
       dots: null
     };
     this.surface.append(this.frame);
@@ -220,18 +248,50 @@ export class Painter {
       this.xDitherPlacement();
     }
 
-    this.xPushUndo();
+    // 選択した範囲は、切り取ったときに取り消しの記録を残してある。
+    if (!this.placement.source) {
+      this.xPushUndo();
+    }
+
     this.mask = this.xComposite();
     this.xEndPlacement();
     this.xDraw();
     this.xCommit();
   }
 
+  // 選択した範囲なら、切り取る前の絵に戻す（途中で残した写しも消える）。
   cancelImage() {
     if (this.placement) {
+      if (this.placement.source) {
+        this.mask = this.undoStack.pop();
+      }
+
       this.xEndPlacement();
       this.xDraw();
       this.handlers.onState();
+    }
+  }
+
+  // 浮かせている範囲の写しを今の位置に残す。浮かせた方は続けて動かせる。
+  copySelection() {
+    if (!this.selecting) {
+      return;
+    }
+
+    if (!this.placement.dots) {
+      this.xDitherPlacement();
+    }
+
+    this.mask = this.xComposite();
+    this.xDraw();
+  }
+
+  // 浮かせている範囲を捨てる（切り取った所は消えたまま）。取り消しで戻せる。
+  deleteSelection() {
+    if (this.selecting) {
+      this.xEndPlacement();
+      this.xDraw();
+      this.xCommit();
     }
   }
 
@@ -343,6 +403,61 @@ export class Painter {
     this.xDraw();
   }
 
+  // 選択の道具で囲んだ範囲のドットを絵から切り取り、画像を置くときと同じ枠で動かせるようにする。
+  // 何も描いていない範囲なら何もしない。
+  xLift(xFrom, xTo) {
+    const xLeft = Math.max(0, Math.min(xFrom.x, xTo.x));
+    const xTop = Math.max(0, Math.min(xFrom.y, xTo.y));
+    const xWidth = Math.min(this.width - 1, Math.max(xFrom.x, xTo.x)) - xLeft + 1;
+    const xHeight = Math.min(this.height - 1, Math.max(xFrom.y, xTo.y)) - xTop + 1;
+
+    if (xWidth < 1 || xHeight < 1) {
+      return;
+    }
+
+    const xDots = new Uint8Array(xWidth * xHeight);
+
+    for (let xY = 0; xY < xHeight; xY += 1) {
+      const xStart = (xTop + xY) * this.width + xLeft;
+      xDots.set(this.mask.subarray(xStart, xStart + xWidth), xY * xWidth);
+    }
+
+    if (!xDots.some((xValue) => xValue !== CLEAR)) {
+      return;
+    }
+
+    this.xPushUndo();
+
+    for (let xY = 0; xY < xHeight; xY += 1) {
+      const xStart = (xTop + xY) * this.width + xLeft;
+      this.mask.fill(CLEAR, xStart, xStart + xWidth);
+    }
+
+    this.placement = {
+      image: null,
+      aspect: xWidth / xHeight,
+      x: xLeft,
+      y: xTop,
+      width: xWidth,
+      height: xHeight,
+      brightness: 0,
+      contrast: 0,
+      isText: false,
+      source: { dots: xDots, width: xWidth, height: xHeight },
+      dots: xDots
+    };
+    this.surface.append(this.frame);
+    this.xUpdatePlacement(false);
+    this.handlers.onState();
+  }
+
+  xUpdateMarquee(xFrom, xTo) {
+    this.marquee.style.left = `${Math.min(xFrom.x, xTo.x)}px`;
+    this.marquee.style.top = `${Math.min(xFrom.y, xTo.y)}px`;
+    this.marquee.style.width = `${Math.abs(xTo.x - xFrom.x) + 1}px`;
+    this.marquee.style.height = `${Math.abs(xTo.y - xFrom.y) + 1}px`;
+  }
+
   xEndPlacement() {
     cancelAnimationFrame(this.previewFrame);
     this.previewFrame = 0;
@@ -379,8 +494,15 @@ export class Painter {
   }
 
   // 画像を今の大きさに縮小し、明るさ・コントラストを当ててからディザで白黒にする。透明な所は透明のまま。
+  // 選択した範囲は、ディザをかけずにドットのまま大きさを変える。
   xDitherPlacement() {
-    const { image: xImage, width: xWidth, height: xHeight } = this.placement;
+    const { image: xImage, width: xWidth, height: xHeight, source: xSource } = this.placement;
+
+    if (xSource) {
+      this.placement.dots = fsScaleDots(xSource, xWidth, xHeight);
+      return;
+    }
+
     const xWork = document.createElement("canvas");
     xWork.width = xWidth;
     xWork.height = xHeight;
@@ -518,6 +640,14 @@ export class Painter {
       return;
     }
 
+    // 選択の道具は、ドラッグで囲んだ範囲を指を離したときに切り取る。
+    if (this.tool === "select") {
+      this.stroke = { id: xEvent.pointerId, start: xPoint, last: xPoint, selecting: true };
+      this.xUpdateMarquee(xPoint, xPoint);
+      this.surface.append(this.marquee);
+      return;
+    }
+
     if (this.tool === "fill") {
       if (this.xIsInside(xPoint)) {
         this.xPushUndo();
@@ -546,6 +676,9 @@ export class Painter {
 
     if (this.stroke.placing) {
       this.xMovePlacement(this.xPoint(xEvent));
+    } else if (this.stroke.selecting) {
+      this.stroke.last = this.xPoint(xEvent);
+      this.xUpdateMarquee(this.stroke.start, this.stroke.last);
     } else {
       this.xApply(this.xPoint(xEvent));
     }
@@ -553,10 +686,13 @@ export class Painter {
 
   xOnEnd(xEvent) {
     if (this.stroke?.id === xEvent.pointerId) {
-      const xPlacing = this.stroke.placing;
+      const xStroke = this.stroke;
       this.stroke = null;
 
-      if (!xPlacing) {
+      if (xStroke.selecting) {
+        this.marquee.remove();
+        this.xLift(xStroke.start, xStroke.last);
+      } else if (!xStroke.placing) {
         this.xCommit();
       }
     }
@@ -575,15 +711,19 @@ export class Painter {
     }
 
     if (xFrom.mode === "move") {
-      xPlacement.x = xClamp(xFrom.x + xDx, MIN_IMAGE_SIZE - xPlacement.width, this.width - MIN_IMAGE_SIZE);
-      xPlacement.y = xClamp(xFrom.y + xDy, MIN_IMAGE_SIZE - xPlacement.height, this.height - MIN_IMAGE_SIZE);
+      // 小さな選択範囲は、その大きさだけカードに残ればよい。
+      const xKeepWidth = Math.min(MIN_IMAGE_SIZE, xPlacement.width);
+      const xKeepHeight = Math.min(MIN_IMAGE_SIZE, xPlacement.height);
+      xPlacement.x = xClamp(xFrom.x + xDx, xKeepWidth - xPlacement.width, this.width - xKeepWidth);
+      xPlacement.y = xClamp(xFrom.y + xDy, xKeepHeight - xPlacement.height, this.height - xKeepHeight);
       this.xUpdatePlacement(false);
       return;
     }
 
-    // 横と縦のうち、大きく動かした方に合わせる。
+    // 横と縦のうち、大きく動かした方に合わせる。選択範囲は1ドットまで縮められる。
     const xDelta = Math.abs(xDx) >= Math.abs(xDy * xPlacement.aspect) ? xDx : xDy * xPlacement.aspect;
-    const xWidth = Math.round(xClamp(xFrom.width + xDelta, MIN_IMAGE_SIZE, this.width * MAX_IMAGE_SCALE));
+    const xMinWidth = xPlacement.source ? 1 : MIN_IMAGE_SIZE;
+    const xWidth = Math.round(xClamp(xFrom.width + xDelta, xMinWidth, this.width * MAX_IMAGE_SCALE));
 
     xPlacement.width = xWidth;
     xPlacement.height = Math.max(1, Math.round(xWidth / xPlacement.aspect));

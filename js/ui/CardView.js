@@ -375,6 +375,10 @@ export class CardView {
     xElement.style.width = `${xPart.width}px`;
     xElement.style.height = `${xPart.height}px`;
     xElement.style.fontSize = `${xPart.textSize}px`;
+
+    if (xPart.type === "field") {
+      xElement.style.textAlign = xPart.textAlign;
+    }
   }
 
   // inactive なら、見えるだけで触れない部品にする。
@@ -384,7 +388,8 @@ export class CardView {
     if (xPart.type === "button") {
       xElement = document.createElement("button");
       xElement.type = "button";
-      xElement.textContent = xPart.name;
+      xElement.textContent = xPart.label;
+      xElement.setAttribute("aria-label", xPart.label || xPart.name);
       xElement.addEventListener("click", () => this.handlers.onPartClick(xPart, xIsBackground));
     } else {
       xElement = document.createElement("textarea");
@@ -395,13 +400,22 @@ export class CardView {
         this.handlers.onFieldInput(xPart, xElement.value, xIsBackground);
       });
 
-      // 文字を固定したフィールドは、ボタンと同じく押すとスクリプトが動く。
-      if (xPart.lockText) {
+      // 文字を固定したフィールド（テキストパーツ）は、スクリプト有効ならボタンと同じく押すとスクリプトが動く。
+      // スクリプト無効なら、押しても選ばず（枠線も出さず）、カードを押したことにする。スクロールはできる。
+      if (xPart.lockText && xPart.clickable) {
         xElement.addEventListener("click", () => this.handlers.onPartClick(xPart, xIsBackground));
+      } else if (xPart.lockText) {
+        xElement.tabIndex = -1;
+        xElement.addEventListener("mousedown", (xEvent) => xEvent.preventDefault());
+        xElement.addEventListener("focus", () => xElement.blur());
+        xElement.addEventListener("click", () => this.handlers.onCardClick());
       }
     }
 
     xElement.className = `part part-${xPart.type} style-${xPart.style}`;
+    xElement.classList.toggle("is-unclickable", xPart.type === "field" && xPart.lockText && !xPart.clickable);
+    xElement.classList.toggle("is-no-scrollbar", xPart.type === "field" && !xPart.scrollbar);
+    xElement.classList.toggle("is-unlabeled", xPart.type === "button" && !xPart.label);
     xElement.dataset.id = xPart.id;
     this.xPlace(xElement, xPart);
 
@@ -424,7 +438,7 @@ export class CardView {
     xElement.dataset.id = xPart.id;
     xLabel.className = "part-label";
     xLabel.textContent = xPart.type === "button"
-      ? xPart.name
+      ? xPart.label || xPart.name
       : fsFieldText(xPart, this.card, xIsBackground) || xPart.name;
     xHandle.className = "part-handle";
     xHandle.setAttribute("aria-hidden", "true");

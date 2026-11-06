@@ -1,4 +1,4 @@
-import { MIN_PART_SIZE, PART_TEXT_SIZES, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
+import { MIN_PART_SIZE, PART_TEXT_SIZES, TEXT_ALIGNS, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
 import { fsCheckScript } from "../hypertalk/Parser.js";
 import { fsPlaySound, fsSoundOptions } from "./Sound.js";
 
@@ -11,6 +11,9 @@ const EFFECT_OPTIONS = [
 
 // カードの効果。空ならスタックの効果に従う。
 const CARD_EFFECT_OPTIONS = [["", "スタックの設定に従う"], ...EFFECT_OPTIONS];
+
+const TEXT_ALIGN_NAMES = { left: "左揃え", center: "中央揃え", right: "右揃え" };
+const TEXT_ALIGN_OPTIONS = TEXT_ALIGNS.map((xAlign) => [xAlign, TEXT_ALIGN_NAMES[xAlign]]);
 
 const STYLE_OPTIONS = {
   button: [
@@ -33,7 +36,6 @@ const STYLE_OPTIONS = {
  * handlers:
  *   onChange(rerender) 値が変わるたびに呼ばれる。rerender が true ならカードを描き直す。
  *   onDeletePart(part) 部品の削除ボタンで呼ばれる。
- *   onClose()          ダイアログを閉じた。
  */
 export class Inspector {
   constructor(xHandlers) {
@@ -55,19 +57,29 @@ export class Inspector {
     this.backdrop.remove();
     this.backdrop = null;
     this.container = null;
-    this.handlers.onClose();
   }
 
   // 背景のフィールドの中身はカードごとなので、今のカード（xCard）を受け取る。
   showPart(xPart, xCardSize, xCard, xIsBackground) {
-    const xTypeName = `${xIsBackground ? "背景" : ""}${xPart.type === "button" ? "ボタン" : "フィールド"}`;
+    // テキストパーツは文字を固定したフィールド。入力フィールドとは出す項目を変える。
+    const xIsText = xPart.type === "field" && xPart.lockText;
+    const xKindName = xPart.type === "button" ? "ボタン" : xIsText ? "テキスト" : "フィールド";
+    const xTypeName = `${xIsBackground ? "背景" : ""}${xKindName}`;
     let xTextInput = null;
     this.xStart(`${xTypeName}情報`);
 
-    this.xTextInput("名前", xPart.name, (xValue) => {
+    // パーツIDは部品の名前で、スクリプトで部品を指すときに使う（button "名前"）。ボタンの見た目は「ラベル」。
+    this.xTextInput("パーツID", xPart.name, (xValue) => {
       xPart.name = xValue;
       this.handlers.onChange(true);
     });
+
+    if (xPart.type === "button") {
+      this.xTextInput("ラベル", xPart.label, (xValue) => {
+        xPart.label = xValue;
+        this.handlers.onChange(true);
+      });
+    }
 
     if (xPart.type === "field") {
       const xLabel = xIsBackground && !xPart.sharedText ? "テキスト（このカードの内容）" : "テキスト";
@@ -90,14 +102,27 @@ export class Inspector {
         this.handlers.onChange(true);
       });
 
+    if (xIsText) {
+      this.xSelect("文字の揃え", TEXT_ALIGN_OPTIONS, xPart.textAlign, (xValue) => {
+        xPart.textAlign = xValue;
+        this.handlers.onChange(true);
+      });
+    }
+
     this.xCheckbox("表示する", xPart.visible, (xValue) => {
       xPart.visible = xValue;
       this.handlers.onChange(true);
     });
 
-    if (xPart.type === "field") {
-      this.xCheckbox("文字を固定（押すとスクリプトが動く）", xPart.lockText, (xValue) => {
-        xPart.lockText = xValue;
+    if (xIsText) {
+      this.xCheckbox("スクロールバーを表示", xPart.scrollbar, (xValue) => {
+        xPart.scrollbar = xValue;
+        this.handlers.onChange(true);
+      });
+
+      // オフなら、閲覧中に押しても選ばれず（枠線も出ず）、スクリプトも動かない。
+      this.xCheckbox("スクリプト有効", xPart.clickable, (xValue) => {
+        xPart.clickable = xValue;
         this.handlers.onChange(true);
       });
     }
