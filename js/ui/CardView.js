@@ -1,4 +1,5 @@
-import { MIN_PART_SIZE, fsFieldText } from "../storage/StackIO.js";
+import { MIN_PART_SIZE } from "../model/StackFormat.js";
+import { fsFieldText } from "../model/StackModel.js";
 
 // 大きな画面で引き伸ばしすぎないための上限。
 const MAX_SCALE = 2;

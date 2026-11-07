@@ -1,6 +1,7 @@
 import { ScriptError } from "./Lexer.js";
 import { fsParseScript } from "./Parser.js";
-import { MIN_PART_SIZE, TEXT_ALIGNS, fsBackgroundOf, fsClampTextSize, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
+import { MIN_PART_SIZE, TEXT_ALIGNS } from "../model/StackFormat.js";
+import { fsBackgroundOf, fsClampTextSize, fsFieldText, fsSetFieldText } from "../model/StackModel.js";
 
 // 無限ループで画面が固まらないよう、実行できる文の数に上限を設ける。
 const MAX_STEPS = 1_000_000;

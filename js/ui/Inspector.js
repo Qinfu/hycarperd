@@ -1,4 +1,5 @@
-import { MIN_PART_SIZE, PART_TEXT_SIZES, TEXT_ALIGNS, fsFieldText, fsSetFieldText } from "../storage/StackIO.js";
+import { MIN_PART_SIZE, PART_TEXT_SIZES, TEXT_ALIGNS } from "../model/StackFormat.js";
+import { fsFieldText, fsSetFieldText } from "../model/StackModel.js";
 import { fsCheckScript } from "../hypertalk/Parser.js";
 import { fsPlaySound, fsSoundOptions } from "./Sound.js";
 

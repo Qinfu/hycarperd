@@ -1,4 +1,27 @@
-import { StackIO, MAX_CARDS, fsCardSize, fsBackgroundOf, fsSetFieldText } from "./storage/StackIO.js";
+import { MAX_CARDS } from "./model/StackFormat.js";
+import {
+  fsBackgroundOf,
+  fsCardSize,
+  fsCreateCard,
+  fsCreateEmptyStack,
+  fsCreatePart,
+  fsDuplicateCard,
+  fsSetFieldText
+} from "./model/StackModel.js";
+import { fsNormalizeFileName, fsStackFileName } from "./storage/StackFileFormat.js";
+import {
+  fsCanPickOpenFile,
+  fsCanPickSaveFile,
+  fsCanShareStack,
+  fsDownloadStack,
+  fsPickStackFile,
+  fsReadStackFile,
+  fsSaveStackWithPicker,
+  fsShareStack
+} from "./storage/StackFiles.js";
+import { fsLoadHomeStack, fsLoadSampleStack, fsLoadStackFromPath } from "./storage/StackLoader.js";
+import { LastOpenedPlace } from "./storage/LastOpenedPlace.js";
+import { fsLogError, fsLogWarning } from "./diagnostics/Log.js";
 import { Interpreter } from "./hypertalk/Interpreter.js";
 import { CardView } from "./ui/CardView.js";
 import { Inspector } from "./ui/Inspector.js";
@@ -40,6 +63,8 @@ let pHistory = [];
 let pImageUrl = "";
 // 文字を絵として置くときに前に選んだ大きさ・フォント・太さ。
 let pTextOptions = { size: 16, font: "gothic", bold: false };
+// 「開く…」で最後に選んだファイルの場所。
+const pLastOpenedPlace = new LastOpenedPlace();
 
 // アプリからのお知らせ。少しの間だけ表示する。
 const fsShowStatus = (xMessage) => {
@@ -293,7 +318,7 @@ const pMenuBar = new MenuBar(document.querySelector("#menubar"), [
       },
       {
         label: "カード複製",
-        action: () => fsDuplicateCard(),
+        action: () => fsDuplicateCurrentCard(),
         enabled: () => Boolean(pStack) && pStack.cards.length < MAX_CARDS
       },
       {
@@ -621,18 +646,18 @@ const fsNewStack = async () => {
   pEditing = true;
   pPainting = false;
   pEditLayer = "card";
-  fsOpenStack(StackIO.createEmpty(xName.trim() || "新しいスタック"), "新しいスタックを作成しました。");
+  fsOpenStack(fsCreateEmptyStack(xName.trim() || "新しいスタック"), "新しいスタックを作成しました。");
 };
 
 // 名前を聞いてから、ブラウザのダウンロード先に保存する。
-const fsDownloadStack = async () => {
-  const xName = await fsAsk("保存するファイルの名前", StackIO.fileNameOf(pStack));
+const fsDownloadStackWithName = async () => {
+  const xName = await fsAsk("保存するファイルの名前", fsStackFileName(pStack));
 
   if (xName === null) {
     return;
   }
 
-  StackIO.download(pStack, StackIO.normalizeFileName(xName, pStack));
+  fsDownloadStack(pStack, fsNormalizeFileName(xName, pStack));
   pChanged = false;
   fsShowStatus("スタックを保存しました。");
 };
@@ -641,8 +666,8 @@ const fsDownloadStack = async () => {
 // 保存ダイアログと共有シートは、メニューを押した操作の中で開く必要があるので、先に await しない。
 const fsSaveStack = async () => {
   try {
-    if (StackIO.canPickSaveFile()) {
-      const xFileName = await StackIO.saveWithPicker(pStack);
+    if (fsCanPickSaveFile()) {
+      const xFileName = await fsSaveStackWithPicker(pStack);
 
       if (xFileName) {
         pChanged = false;
@@ -652,19 +677,20 @@ const fsSaveStack = async () => {
       return;
     }
 
-    if (MOBILE_QUERY.matches && StackIO.canShare(pStack)) {
-      if (await StackIO.share(pStack)) {
+    if (MOBILE_QUERY.matches && fsCanShareStack(pStack)) {
+      if (await fsShareStack(pStack)) {
         pChanged = false;
         fsShowStatus("スタックのファイルを渡しました。");
       }
 
       return;
     }
-  } catch {
+  } catch (xError) {
     // 保存ダイアログや共有シートが使えなかったときは、ダウンロードで保存する。
+    fsLogWarning("保存ダイアログや共有シートが使えなかったので、ダウンロードで保存します。", xError);
   }
 
-  await fsDownloadStack();
+  await fsDownloadStackWithName();
 };
 
 const fsOpenSample = async () => {
@@ -673,12 +699,13 @@ const fsOpenSample = async () => {
   }
 
   try {
-    const xData = await StackIO.loadSample();
+    const xData = await fsLoadSampleStack();
     pInterpreter.abort();
     pEditing = false;
     pPainting = false;
     fsOpenStack(xData, "サンプルを開きました。");
   } catch (xError) {
+    fsLogError("サンプルを開けませんでした。", xError);
     fsShowStatus(`読み込みエラー：${xError.message}`);
   }
 };
@@ -694,7 +721,7 @@ const fsNewCard = () => {
     return;
   }
 
-  const xNewCardData = StackIO.createCard(fsCurrentCard().backgroundId, `カード${pStack.cards.length + 1}`);
+  const xNewCardData = fsCreateCard(fsCurrentCard().backgroundId, `カード${pStack.cards.length + 1}`);
 
   // 現在のカードの直後に追加する。
   pStack.cards.splice(pCardIndex + 1, 0, xNewCardData);
@@ -704,7 +731,7 @@ const fsNewCard = () => {
 };
 
 // 今のカードを複製して、すぐ後ろに入れる。
-const fsDuplicateCard = () => {
+const fsDuplicateCurrentCard = () => {
   if (!pEditing) {
     return;
   }
@@ -715,7 +742,7 @@ const fsDuplicateCard = () => {
   }
 
   const xCard = fsCurrentCard();
-  pStack.cards.splice(pCardIndex + 1, 0, StackIO.duplicateCard(xCard, `${xCard.name}のコピー`));
+  pStack.cards.splice(pCardIndex + 1, 0, fsDuplicateCard(xCard, `${xCard.name}のコピー`));
   fsMarkChanged();
   fsGoToCard(pCardIndex + 1);
   fsShowStatus(`「${xCard.name}」を複製しました。`);
@@ -751,7 +778,7 @@ const fsAddPart = (xType) => {
     fsSetTool(pEditing ? pEditLayer : "card");
   }
 
-  const xPart = StackIO.createPart(xType, fsEditOwner(), fsCardSize(pStack));
+  const xPart = fsCreatePart(xType, fsEditOwner(), fsCardSize(pStack));
   fsEditOwner().parts.push(xPart);
   pSelectedId = xPart.id;
   fsRenderCard();
@@ -788,12 +815,13 @@ const fsGoStack = async (xPath) => {
   }
 
   try {
-    const xData = await StackIO.loadFromPath(xPath);
+    const xData = await fsLoadStackFromPath(xPath);
     pInterpreter.abort();
     pEditing = false;
     pPainting = false;
     fsOpenStack(xData, `「${xData.stack.name}」を開きました。`);
   } catch (xError) {
+    fsLogError(`go stack でスタックを開けませんでした：${xPath}`, xError);
     fsShowStatus(`スタックを開けません：${xError.message}`);
   }
 };
@@ -805,12 +833,13 @@ const fsOpenStackFile = async (xFile) => {
   }
 
   try {
-    const xData = await StackIO.readFile(xFile);
+    const xData = await fsReadStackFile(xFile);
     pInterpreter.abort();
     pEditing = false;
     pPainting = false;
     fsOpenStack(xData, "スタックを読み込みました。");
   } catch (xError) {
+    fsLogError(`ファイルを開けませんでした：${xFile.name}`, xError);
     fsShowStatus(`読み込みエラー：${xError.message}`);
   }
 };
@@ -818,18 +847,19 @@ const fsOpenStackFile = async (xFile) => {
 // ファイルメニューの「開く…」。PCのChrome・Edgeは、前に開いたファイルのあるフォルダから選べるOSの画面を使う。
 // どちらの画面も押した操作の中で開く必要があるので、先に await しない。
 const fsChooseStackFile = async () => {
-  if (!StackIO.canPickOpenFile()) {
+  if (!fsCanPickOpenFile()) {
     xStackFile.click();
     return;
   }
 
   try {
-    const xFile = await StackIO.pickOpenFile();
+    const xFile = await fsPickStackFile(pLastOpenedPlace);
 
     if (xFile) {
       await fsOpenStackFile(xFile);
     }
   } catch (xError) {
+    fsLogError("「開く」の画面を使えませんでした。", xError);
     fsShowStatus(`ファイルを開けません：${xError.message}`);
   }
 };
@@ -943,11 +973,15 @@ MOBILE_QUERY.addEventListener("change", fsApplyDevice);
 const fsInitialize = async () => {
   fsApplyDevice();
   fsUnlockSound();
-  StackIO.loadLastPlace();
+
+  if (fsCanPickOpenFile()) {
+    pLastOpenedPlace.load();
+  }
 
   try {
-    fsOpenStack(await StackIO.loadHome(), "", true);
+    fsOpenStack(await fsLoadHomeStack(), "", true);
   } catch (xError) {
+    fsLogError("ホームのスタックを開けませんでした。", xError);
     fsShowStatus(`起動エラー：${xError.message}`);
     xCardName.textContent = "スタックを開けません";
   }

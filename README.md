@@ -181,7 +181,15 @@ python3 -m http.server
 | ファイル | 役割 |
 | --- | --- |
 | `js/app.js` | 画面全体のつなぎ込み |
-| `js/storage/StackIO.js` | スタックの作成・検証・ファイルへの保存と読み込み（最後に開いた場所は IndexedDB） |
+| `js/config/AppConfig.js` | アプリの設定値（同梱スタックのパスなど） |
+| `js/model/StackFormat.js` | スタックのデータ形式の定数（カードの上限、部品の既定値など） |
+| `js/model/StackModel.js` | スタック・カード・部品を作る、背景やフィールドの文字を調べる |
+| `js/model/StackNormalizer.js` | 読み込んだデータの検査と、古い形式を今の形にそろえる（`StackDataError`） |
+| `js/storage/StackFileFormat.js` | スタックのファイル名と JSON の読み書き |
+| `js/storage/StackFiles.js` | ファイルへの保存（保存ダイアログ・共有シート・ダウンロード）とファイルを開く |
+| `js/storage/StackLoader.js` | Webサーバー上のスタックの読み込み（ホーム・サンプル・go stack） |
+| `js/storage/LastOpenedPlace.js` | 「開く…」で最後に開いた場所（IndexedDB） |
+| `js/diagnostics/Log.js` | 開発者ツールのコンソールに出すログ |
 | `js/ui/MenuBar.js` | プルダウンメニュー（PC / スマホで描き分け） |
 | `js/ui/CardView.js` | カードと部品の表示、画面に合わせた拡大縮小、スワイプ、編集中のドラッグ |
 | `js/ui/Painter.js` | 絵の描画（ドット単位の線・図形・塗りつぶし、取り消し、PNGの読み書き） |
