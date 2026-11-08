@@ -1,0 +1,1135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HycarTalk リファレンス</title>
+<style>
+  :root {
+    --ink: #000;
+    --paper: #fff;
+    --desk: #e6e6e6;
+    --muted: #555;
+    --code-bg: #f3f3f3;
+    --accent-bg: #000;
+    --accent-ink: #fff;
+    --line: 2px;
+    --hairline: 1px;
+    --space-xs: 4px;
+    --space-s: 8px;
+    --space-m: 12px;
+    --space-l: 16px;
+    --space-xl: 24px;
+    --toc-width: 240px;
+    --content-max: 860px;
+    --mono: "SFMono-Regular", Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #eee;
+      --paper: #1b1b1b;
+      --desk: #111;
+      --muted: #aaa;
+      --code-bg: #262626;
+      --accent-bg: #eee;
+      --accent-ink: #111;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ink: #eee;
+    --paper: #1b1b1b;
+    --desk: #111;
+    --muted: #aaa;
+    --code-bg: #262626;
+    --accent-bg: #eee;
+    --accent-ink: #111;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-padding-top: 64px; }
+
+  body {
+    margin: 0;
+    background: var(--desk);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15px;
+    line-height: 1.75;
+  }
+
+  header.page-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: var(--space-m);
+    padding: var(--space-s) var(--space-l);
+    border-bottom: var(--line) solid var(--ink);
+    background: var(--paper);
+  }
+
+  header.page-header h1 {
+    flex: 1;
+    margin: 0;
+    font-size: 17px;
+    letter-spacing: 0.02em;
+  }
+
+  header.page-header input {
+    width: min(260px, 45vw);
+    padding: 6px 8px;
+    border: var(--hairline) solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+    font-size: 16px;
+  }
+
+  .toc-toggle {
+    display: none;
+    padding: 4px 10px;
+    border: var(--line) solid var(--ink);
+    background: var(--paper);
+    color: var(--ink);
+    font: inherit;
+  }
+
+  .layout {
+    display: flex;
+    gap: var(--space-xl);
+    max-width: calc(var(--content-max) + var(--toc-width) + 3 * var(--space-xl));
+    margin: 0 auto;
+    padding: var(--space-xl);
+  }
+
+  nav.toc {
+    position: sticky;
+    top: 72px;
+    flex: 0 0 var(--toc-width);
+    align-self: flex-start;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+    padding: var(--space-m) var(--space-m) var(--space-m) var(--space-s);
+    border: var(--line) solid var(--ink);
+    background: var(--paper);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  nav.toc ol { margin: 0; padding-left: 20px; }
+  nav.toc li { margin: 2px 0; }
+  nav.toc a { color: var(--ink); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+
+  main {
+    flex: 1;
+    min-width: 0;
+    max-width: var(--content-max);
+  }
+
+  section.chapter {
+    margin-bottom: var(--space-xl);
+    padding: var(--space-l) var(--space-xl) var(--space-xl);
+    border: var(--line) solid var(--ink);
+    background: var(--paper);
+    box-shadow: 3px 3px 0 var(--ink);
+  }
+
+  section.chapter > h2 {
+    margin: calc(-1 * var(--space-l)) calc(-1 * var(--space-xl)) var(--space-l);
+    padding: var(--space-xs) var(--space-xl);
+    border-bottom: var(--line) solid var(--ink);
+    background: repeating-linear-gradient(var(--paper) 0 2px, var(--ink) 2px 3px) 0 6px / 100% 13px no-repeat;
+    font-size: 17px;
+  }
+
+  section.chapter > h2 span {
+    padding: 0 var(--space-s);
+    background: var(--paper);
+  }
+
+  h3 {
+    margin: var(--space-xl) 0 var(--space-s);
+    padding-bottom: 2px;
+    border-bottom: var(--hairline) solid var(--ink);
+    font-size: 16px;
+  }
+
+  h3 code { font-size: 15px; }
+
+  p { margin: var(--space-s) 0; }
+
+  code, pre { font-family: var(--mono); }
+
+  code {
+    padding: 0 3px;
+    background: var(--code-bg);
+    font-size: 0.92em;
+  }
+
+  pre {
+    margin: var(--space-s) 0 var(--space-m);
+    padding: var(--space-m) var(--space-l);
+    overflow-x: auto;
+    border: var(--hairline) solid var(--ink);
+    background: var(--code-bg);
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
+
+  pre code { padding: 0; background: none; font-size: inherit; }
+
+  .syntax {
+    margin: var(--space-s) 0;
+    padding: var(--space-s) var(--space-m);
+    border-left: 4px solid var(--ink);
+    background: var(--code-bg);
+    font-family: var(--mono);
+    font-size: 13.5px;
+    white-space: pre-wrap;
+  }
+
+  .syntax i { color: var(--muted); font-style: italic; }
+
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    margin: var(--space-s) 0 var(--space-m);
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  th, td {
+    padding: 6px 10px;
+    border: var(--hairline) solid var(--ink);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  th { background: var(--accent-bg); color: var(--accent-ink); font-weight: 600; white-space: nowrap; }
+
+  td code { white-space: nowrap; }
+
+  .note, .warn {
+    margin: var(--space-m) 0;
+    padding: var(--space-s) var(--space-m);
+    border: var(--hairline) dashed var(--ink);
+    font-size: 14px;
+  }
+
+  .warn { border-style: solid; border-width: var(--line); }
+
+  .note::before { content: "メモ　"; font-weight: 700; }
+  .warn::before { content: "注意　"; font-weight: 700; }
+
+  .badge {
+    display: inline-block;
+    padding: 0 6px;
+    border: var(--hairline) solid var(--ink);
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: nowrap;
+  }
+
+  .badge.rw { background: var(--accent-bg); color: var(--accent-ink); }
+
+  .entry[hidden], .chapter[hidden] { display: none; }
+
+  .no-results { display: none; padding: var(--space-l); border: var(--line) solid var(--ink); background: var(--paper); }
+
+  footer { padding: var(--space-l) 0 var(--space-xl); color: var(--muted); font-size: 13px; text-align: center; }
+
+  @media (max-width: 900px) {
+    .layout { display: block; padding: var(--space-l); }
+    .toc-toggle { display: inline-block; }
+    nav.toc { position: static; display: none; max-height: none; margin-bottom: var(--space-l); }
+    nav.toc.is-open { display: block; }
+    section.chapter { padding: var(--space-m) var(--space-l) var(--space-l); }
+    section.chapter > h2 { margin: calc(-1 * var(--space-m)) calc(-1 * var(--space-l)) var(--space-m); padding: var(--space-xs) var(--space-l); }
+    header.page-header h1 { font-size: 15px; }
+  }
+
+  @media print {
+    header.page-header, nav.toc { display: none; }
+    .layout { display: block; padding: 0; }
+    section.chapter { box-shadow: none; break-inside: avoid-page; }
+  }
+</style>
+</head>
+<body>
+<header class="page-header">
+  <button class="toc-toggle" type="button" aria-expanded="false" aria-controls="toc">目次</button>
+  <h1>HycarTalk リファレンス</h1>
+  <input id="search" type="search" placeholder="命令・関数を探す（例：repeat）" aria-label="リファレンスを検索">
+</header>
+
+<div class="layout">
+<nav class="toc" id="toc" aria-label="目次">
+  <ol>
+    <li><a href="#basics">スクリプトの基本</a></li>
+    <li><a href="#handlers">ハンドラとメッセージ</a></li>
+    <li><a href="#variables">変数</a></li>
+    <li><a href="#values">値の扱い</a></li>
+    <li><a href="#constants">定数</a></li>
+    <li><a href="#operators">演算子</a></li>
+    <li><a href="#objects">オブジェクトの指定</a></li>
+    <li><a href="#properties">プロパティ</a></li>
+    <li><a href="#chunks">チャンク（文字の一部）</a></li>
+    <li><a href="#functions">関数</a></li>
+    <li><a href="#commands">命令</a></li>
+    <li><a href="#control">制御構文（if・repeat）</a></li>
+    <li><a href="#menus">doMenu で選べる項目</a></li>
+    <li><a href="#sounds">音の名前</a></li>
+    <li><a href="#limits">制限と安全のための決まり</a></li>
+    <li><a href="#errors">よく出るエラー</a></li>
+    <li><a href="#examples">例</a></li>
+  </ol>
+</nav>
+
+<main>
+<p class="no-results" id="no-results">見つかりませんでした。別の言葉で探してください。</p>
+
+<!-- ================================================================ -->
+<section class="chapter" id="basics">
+<h2><span>1. スクリプトの基本</span></h2>
+
+<p>HycarTalk は、HycarPerd のスタックを動かすスクリプトの言語です。HyperCard の HyperTalk をもとにしています。</p>
+
+<div class="entry">
+<h3>スクリプトを書く場所</h3>
+<p>スクリプトは、エディット中に次の画面で書きます。書くたびに構文が確かめられ、誤りがあれば欄の下に出ます。</p>
+<div class="table-wrap"><table>
+  <tr><th>持ち主</th><th>開き方</th></tr>
+  <tr><td>ボタン・フィールド・テキストパーツ</td><td>部品をダブルクリック（ダブルタップ）、またはツールメニューの「部品の情報…」</td></tr>
+  <tr><td>カード</td><td>ツールメニューの「カード設定…」</td></tr>
+  <tr><td>背景</td><td>ツールメニューの「背景設定…」</td></tr>
+  <tr><td>スタック</td><td>ツールメニューの「スタック設定…」</td></tr>
+</table></div>
+<p class="note">スクリプトはブラウズ中だけ動きます。エディット中はメッセージが送られません。</p>
+</div>
+
+<div class="entry">
+<h3>書き方の決まり</h3>
+<ul>
+  <li><b>大文字・小文字</b>：区別しません。<code>Put</code>・<code>PUT</code>・<code>put</code> は同じです。部品やカードの名前も、大文字・小文字を区別せずに探します。</li>
+  <li><b>1行に1つの文</b>：文は行ごとに書きます。行の先頭の空白（字下げ）は自由です。</li>
+  <li><b>コメント</b>：<code>--</code> から行の終わりまでは無視されます。iPhone が自動で変える <code>—</code>（ダッシュ）も使えます。</li>
+  <li><b>行の継続</b>：行の終わりに <code>¬</code> を書くと、次の行に続けて書けます。</li>
+  <li><b>文字</b>：<code>"</code> で囲みます。スマホで入力されがちな <code>“ ”</code> も使えます。文字の中に <code>"</code> を入れるときは、定数 <code>quote</code> をつなぎます。</li>
+  <li><b>名前</b>：変数やハンドラの名前には、日本語を含む文字・数字・<code>_</code> が使えます（数字で始めることはできません）。</li>
+</ul>
+<pre><code>on mouseUp
+  -- これはコメント
+  put "とても長い文は" &amp;&amp; ¬
+      "次の行に続けて書ける" into field "メモ"
+end mouseUp</code></pre>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="handlers">
+<h2><span>2. ハンドラとメッセージ</span></h2>
+
+<div class="entry">
+<h3><code>on</code> … <code>end</code>（メッセージハンドラ）</h3>
+<div class="syntax">on <i>メッセージ名</i> [<i>引数1</i>, <i>引数2</i>, …]
+  <i>文</i>
+end <i>メッセージ名</i></div>
+<p>メッセージを受け取ったときに動く処理です。1つのスクリプトに、いくつでも書けます。引数を書くと、受け取った値がその名前のローカル変数に入ります（渡されなかった引数は空）。</p>
+<pre><code>on mouseUp
+  answer "押されました"
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>function</code> … <code>end</code>（関数ハンドラ）</h3>
+<div class="syntax">function <i>関数名</i> [<i>引数</i>, …]
+  <i>文</i>
+  return <i>値</i>
+end <i>関数名</i></div>
+<p>式の中で <code>関数名(引数, …)</code> と書いて呼ぶ、自作の関数です。<code>return</code> で値を返します。組み込み関数と同じ名前なら、自作の方が先に使われます。</p>
+<pre><code>function double n
+  return n * 2
+end double
+
+on mouseUp
+  put double(21)   -- 42
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3>画面から送られるメッセージ</h3>
+<div class="table-wrap"><table>
+  <tr><th>メッセージ</th><th>送られるとき</th><th>最初に受け取るもの</th></tr>
+  <tr><td><code>mouseUp</code></td><td>ボタンを押した。スクリプト有効のテキストパーツを押した。カードの何もない所を押した</td><td>押した部品（何もない所ならカード）</td></tr>
+  <tr><td><code>openStack</code></td><td>スタックを開いた（ブラウズで開いたときだけ）</td><td>スタック</td></tr>
+  <tr><td><code>openCard</code></td><td>カードが表示された（スタックを開いたときは openStack の直後）</td><td>表示されたカード</td></tr>
+  <tr><td><code>closeCard</code></td><td>カードを離れる直前</td><td>離れるカード</td></tr>
+</table></div>
+<p>ボタンに「押したときの音」を設定していれば、<code>mouseUp</code> より先に鳴ります。スクリプトが動いている間に押しても、次の <code>mouseUp</code> は送られません。</p>
+</div>
+
+<div class="entry">
+<h3>メッセージの通り道</h3>
+<p>メッセージは次の順に渡され、最初に同じ名前のハンドラを持っていたもので動きます。どこにもなければ何も起きません。</p>
+<div class="syntax">部品 → カード → 背景 → スタック</div>
+<p>カードに届いたメッセージは「カード → 背景 → スタック」の順です。スタックのスクリプトに書けば、すべてのカードで動きます。</p>
+</div>
+
+<div class="entry">
+<h3><code>pass</code></h3>
+<div class="syntax">pass <i>メッセージ名</i></div>
+<p>今のハンドラを終え、同じメッセージを通り道の次へ渡します。</p>
+<pre><code>-- カードのスクリプト
+on openCard
+  put the name of this card into field "見出し"
+  pass openCard   -- 背景やスタックの openCard も動かす
+end openCard</code></pre>
+</div>
+
+<div class="entry">
+<h3>自作のメッセージ（命令として呼ぶ）</h3>
+<p>命令の名前の代わりに自作のハンドラの名前を書くと、そのメッセージを自分のスクリプトから通り道に沿って送ります。引数は <code>,</code> で区切ります。どこにもハンドラがなければエラーになります。</p>
+<pre><code>on mouseUp
+  greet "花子", 3
+end mouseUp
+
+on greet who, count
+  repeat count times
+    put "こんにちは、" &amp; who after msg
+  end repeat
+end greet</code></pre>
+<p class="note">画面から送られるメッセージ（<code>mouseUp</code>・<code>openCard</code> など）は、受け取るハンドラがなくてもエラーになりません。</p>
+</div>
+
+<div class="entry">
+<h3><code>send</code></h3>
+<div class="syntax">send <i>メッセージ</i> [to <i>オブジェクト</i>]</div>
+<p>メッセージ（文字で書く）を指定したオブジェクトに送ります。送り先を省くと、このスクリプトを持つオブジェクトに送ります。</p>
+<pre><code>send "mouseUp" to button "次へ"
+send "reset" to this card</code></pre>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="variables">
+<h2><span>3. 変数</span></h2>
+
+<div class="entry">
+<h3>ローカル変数</h3>
+<p>宣言は要りません。<code>put 値 into 名前</code> と書くと、その名前の変数ができます。使える範囲はそのハンドラの中だけで、ハンドラが終わると消えます。</p>
+<pre><code>put 3 into count
+add 2 to count
+put count * 10   -- 50</code></pre>
+<p class="warn">値を入れる前の変数を読むと、HyperTalk と同じく<b>名前そのものの文字</b>になります（<code>answer abc</code> は「abc」）。打ち間違いに気づきにくいので、使う前に必ず値を入れてください。</p>
+</div>
+
+<div class="entry">
+<h3><code>it</code></h3>
+<p><code>get</code>・<code>answer</code>・<code>ask</code> の結果が入る特別な変数です。値を入れる前は空です。</p>
+<pre><code>ask "お名前は？"
+put "こんにちは、" &amp; it</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>global</code>（グローバル変数）</h3>
+<div class="syntax">global <i>名前</i> [, <i>名前</i> …]</div>
+<p>宣言した名前は、すべてのハンドラで同じ値を共有します。使うハンドラのそれぞれで宣言してください。最初の値は空です。</p>
+<pre><code>on mouseUp
+  global score
+  add 1 to score
+  put "得点：" &amp; score
+end mouseUp</code></pre>
+<p class="note">グローバル変数は、スタックを開き直すと消えます。残しておきたい値はフィールドに入れてください（フィールドの中身はスタックと一緒に保存されます）。</p>
+</div>
+
+<div class="entry">
+<h3>メッセージボックス（<code>msg</code>）</h3>
+<p><code>msg</code>・<code>message</code>・<code>message box</code> はメッセージボックスを指します。書き込み先にも、式の中で中身を読むのにも使えます。書き込むと、閉じていても開きます（エディット中は表示されません）。</p>
+<pre><code>put "1行目" into msg
+put return &amp; "2行目" after msg
+put the number of lines in msg   -- 2</code></pre>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="values">
+<h2><span>4. 値の扱い</span></h2>
+
+<p>値は「文字」「数」「真偽値（true / false）」のどれかですが、使う場面に合わせて自動で読み替えます。</p>
+<div class="table-wrap"><table>
+  <tr><th>場面</th><th>読み替え方</th></tr>
+  <tr><td>数として読む（<code>+</code>・<code>add</code> など）</td><td>前後の空白は無視します。<b>全角の数字</b>（<code>１２</code>）も読めます。空の文字は <code>0</code>。数として読めなければエラー</td></tr>
+  <tr><td>真偽値として読む（<code>if</code>・<code>and</code> など）</td><td><code>true</code> / <code>false</code>（大文字・小文字は問わない）だけ。ほかはエラー</td></tr>
+  <tr><td>文字にする（<code>&amp;</code>・表示など）</td><td>整数はそのまま。小数は 6 桁で丸めます（<code>0.1 + 0.2</code> は <code>0.3</code>）。計算できない値は <code>NAN</code>、無限大は <code>INF</code> / <code>-INF</code></td></tr>
+  <tr><td>比べる（<code>=</code>・<code>&lt;</code> など）</td><td>両方が数として読めれば数で、そうでなければ大文字・小文字を区別しない文字で比べます（<code>"10" = 10.0</code> は true、<code>"ABC" = "abc"</code> も true）</td></tr>
+</table></div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="constants">
+<h2><span>5. 定数</span></h2>
+<div class="table-wrap"><table>
+  <tr><th>定数</th><th>値</th></tr>
+  <tr><td><code>empty</code></td><td>空の文字</td></tr>
+  <tr><td><code>true</code> / <code>false</code></td><td>真偽値</td></tr>
+  <tr><td><code>return</code></td><td>改行</td></tr>
+  <tr><td><code>space</code></td><td>半角の空白</td></tr>
+  <tr><td><code>tab</code></td><td>タブ</td></tr>
+  <tr><td><code>quote</code></td><td><code>"</code></td></tr>
+  <tr><td><code>comma</code></td><td><code>,</code></td></tr>
+</table></div>
+<pre><code>put quote &amp; "引用" &amp; quote          -- "引用"
+if field "名前" is empty then beep</code></pre>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="operators">
+<h2><span>6. 演算子</span></h2>
+<p>上ほど先に計算します（優先順位が高い）。同じ段の演算子は左から順に計算します（<code>^</code> だけは右から）。かっこ <code>( )</code> で順番を変えられます。</p>
+<div class="table-wrap"><table>
+  <tr><th>順位</th><th>演算子</th><th>意味</th><th>例</th></tr>
+  <tr><td>1</td><td><code>-</code>（前に付ける）・<code>not</code></td><td>符号を反転・真偽を反転</td><td><code>-x</code>、<code>not (a &gt; b)</code></td></tr>
+  <tr><td>2</td><td><code>^</code></td><td>べき乗（右から計算）</td><td><code>2 ^ 3 ^ 2</code> は 512</td></tr>
+  <tr><td>3</td><td><code>*</code>・<code>/</code>・<code>div</code>・<code>mod</code></td><td>掛け算・割り算・割り算の整数部分・余り</td><td><code>7 div 2</code> は 3、<code>7 mod 2</code> は 1</td></tr>
+  <tr><td>4</td><td><code>+</code>・<code>-</code></td><td>足し算・引き算</td><td><code>1 + 2</code></td></tr>
+  <tr><td>5</td><td><code>&amp;</code>・<code>&amp;&amp;</code></td><td>文字をつなぐ・空白を1つはさんでつなぐ</td><td><code>"a" &amp;&amp; "b"</code> は「a b」</td></tr>
+  <tr><td>6</td><td><code>=</code>・<code>is</code>・<code>&lt;&gt;</code>・<code>≠</code>・<code>is not</code>・<code>&lt;</code>・<code>&gt;</code>・<code>&lt;=</code>・<code>≤</code>・<code>&gt;=</code>・<code>≥</code>・<code>contains</code>・<code>is in</code>・<code>is not in</code></td><td>比べる・含むか（大文字・小文字を区別しない）</td><td><code>"Hello" contains "ell"</code>、<code>"b" is in "abc"</code></td></tr>
+  <tr><td>7</td><td><code>and</code></td><td>どちらも true なら true。左が false なら右は計算しない</td><td><code>x &gt; 0 and x &lt; 10</code></td></tr>
+  <tr><td>8</td><td><code>or</code></td><td>どちらかが true なら true。左が true なら右は計算しない</td><td><code>x = 1 or x = 2</code></td></tr>
+</table></div>
+<p class="warn">0 で割る（<code>/</code>・<code>div</code>・<code>mod</code>・<code>divide</code>）とエラーになります。</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="objects">
+<h2><span>7. オブジェクトの指定</span></h2>
+
+<div class="entry">
+<h3>部品（ボタン・フィールド）</h3>
+<div class="table-wrap"><table>
+  <tr><th>書き方</th><th>意味</th></tr>
+  <tr><td><code>button "OK"</code> / <code>btn "OK"</code></td><td>パーツIDが「OK」のボタン</td></tr>
+  <tr><td><code>button 2</code></td><td>2 番目のボタン（番号は重なり順。奥から 1, 2, …）</td></tr>
+  <tr><td><code>field "名前"</code> / <code>fld 1</code></td><td>フィールド。<b>テキストパーツもフィールドとして指します</b></td></tr>
+  <tr><td><code>card button 1</code> / <code>cd fld "x"</code></td><td>カードの部品だけから探す</td></tr>
+  <tr><td><code>bg button 1</code> / <code>background field "x"</code></td><td>背景の部品だけから探す（<code>bkgnd</code> とも書ける）</td></tr>
+</table></div>
+<p><code>card</code> / <code>bg</code> を付けないときは、カードの部品を探し、なければ背景の部品を探します。名前・番号には式も書けます（<code>field ("答" &amp; n)</code>）。</p>
+<p>式の中に部品を書くと、その中身（フィールドの文字）になります：<code>put field "数" + 1 into field "数"</code></p>
+</div>
+
+<div class="entry">
+<h3>カード・背景・スタック</h3>
+<div class="table-wrap"><table>
+  <tr><th>書き方</th><th>意味</th></tr>
+  <tr><td><code>this card</code></td><td>今のカード</td></tr>
+  <tr><td><code>next card</code> / <code>prev card</code> / <code>previous card</code></td><td>次・前のカード（端では反対の端へ回り込む）</td></tr>
+  <tr><td><code>first card</code> / <code>last card</code></td><td>最初・最後のカード</td></tr>
+  <tr><td><code>card 3</code> / <code>cd "ホーム"</code></td><td>3 番目のカード／名前が「ホーム」のカード</td></tr>
+  <tr><td><code>this bg</code> / <code>bg</code> / <code>background</code></td><td>今のカードの背景</td></tr>
+  <tr><td><code>this stack</code></td><td>スタック</td></tr>
+  <tr><td><code>me</code></td><td>このスクリプトを持つオブジェクト自身</td></tr>
+  <tr><td><code>the target</code></td><td>最初にメッセージを受け取ったもの（押されたボタンなど）</td></tr>
+</table></div>
+<p>式の中に書くと、カード・背景・スタックはその名前になります（<code>put this card</code> はカードの名前）。<code>me</code> と <code>the target</code> は、部品なら中身、それ以外なら名前です。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="properties">
+<h2><span>8. プロパティ</span></h2>
+<div class="syntax">the <i>プロパティ</i> of <i>オブジェクト</i>             -- 読む
+set [the] <i>プロパティ</i> of <i>オブジェクト</i> to <i>値</i>  -- 書く</div>
+<p><span class="badge rw">読み書き</span> は <code>set</code> で変えられ、<span class="badge">読む</span> は読むだけです。変えた値はすぐ画面に映り、スタックと一緒に保存されます。</p>
+
+<div class="entry">
+<h3>ボタン・フィールド・テキストパーツ</h3>
+<div class="table-wrap"><table>
+  <tr><th>プロパティ</th><th></th><th>内容</th></tr>
+  <tr><td><code>name</code></td><td><span class="badge rw">読み書き</span></td><td>パーツID（スクリプトで指すときの名前）</td></tr>
+  <tr><td><code>label</code></td><td><span class="badge rw">読み書き</span></td><td>ボタンに表示する文字。空なら文字のない透明なボタン</td></tr>
+  <tr><td><code>text</code></td><td><span class="badge rw">読み書き</span></td><td>フィールドの文字。背景のフィールドは、今のカードの文字（全カード共通にしていれば共通の文字）</td></tr>
+  <tr><td><code>visible</code></td><td><span class="badge rw">読み書き</span></td><td>表示するか（true / false）。<code>hide</code>・<code>show</code> と同じ</td></tr>
+  <tr><td><code>lockText</code></td><td><span class="badge rw">読み書き</span></td><td>文字を固定するか。true ならテキストパーツ、false なら入力できるフィールド</td></tr>
+  <tr><td><code>clickable</code></td><td><span class="badge rw">読み書き</span></td><td>テキストパーツの「スクリプト有効」。true なら押すと mouseUp が送られる</td></tr>
+  <tr><td><code>sharedText</code></td><td><span class="badge rw">読み書き</span></td><td>背景のフィールドで、全カードで同じ文字にするか</td></tr>
+  <tr><td><code>textSize</code></td><td><span class="badge rw">読み書き</span></td><td>文字の大きさ（ドット）。6〜96 に収める</td></tr>
+  <tr><td><code>textAlign</code></td><td><span class="badge rw">読み書き</span></td><td>文字の揃え：<code>left</code> / <code>center</code> / <code>right</code></td></tr>
+  <tr><td><code>scrollbar</code></td><td><span class="badge rw">読み書き</span></td><td>テキストパーツのスクロールバーを出すか</td></tr>
+  <tr><td><code>sound</code></td><td><span class="badge rw">読み書き</span></td><td>ボタンを押したときの音の名前（空なら鳴らさない）</td></tr>
+  <tr><td><code>left</code> / <code>top</code></td><td><span class="badge rw">読み書き</span></td><td>位置（カードの左上からのドット）。整数に丸める</td></tr>
+  <tr><td><code>width</code> / <code>height</code></td><td><span class="badge rw">読み書き</span></td><td>大きさ（ドット）。16 より小さくはならない</td></tr>
+  <tr><td><code>style</code></td><td><span class="badge">読む</span></td><td>見た目：<code>roundrect</code> / <code>rectangle</code> / <code>shadow</code> / <code>transparent</code></td></tr>
+  <tr><td><code>id</code></td><td><span class="badge">読む</span></td><td>部品ごとの変わらない識別子</td></tr>
+  <tr><td><code>number</code></td><td><span class="badge">読む</span></td><td>同じ層・同じ種類の中での番号（重なり順）</td></tr>
+  <tr><td><code>script</code></td><td><span class="badge">読む</span></td><td>スクリプトの文字</td></tr>
+</table></div>
+<pre><code>set the label of button "開始" to "停止"
+set the textSize of field "見出し" to 24
+set the left of me to the left of me + 10
+put the number of me</code></pre>
+</div>
+
+<div class="entry">
+<h3>カード・背景・スタック</h3>
+<div class="table-wrap"><table>
+  <tr><th>オブジェクト</th><th>プロパティ</th><th></th><th>内容</th></tr>
+  <tr><td rowspan="4">カード</td><td><code>name</code></td><td><span class="badge rw">読み書き</span></td><td>カードの名前</td></tr>
+  <tr><td><code>number</code></td><td><span class="badge">読む</span></td><td>何番目のカードか</td></tr>
+  <tr><td><code>id</code></td><td><span class="badge">読む</span></td><td>識別子</td></tr>
+  <tr><td><code>script</code></td><td><span class="badge">読む</span></td><td>スクリプト</td></tr>
+  <tr><td rowspan="3">背景</td><td><code>name</code></td><td><span class="badge rw">読み書き</span></td><td>背景の名前</td></tr>
+  <tr><td><code>id</code></td><td><span class="badge">読む</span></td><td>識別子</td></tr>
+  <tr><td><code>script</code></td><td><span class="badge">読む</span></td><td>スクリプト</td></tr>
+  <tr><td rowspan="2">スタック</td><td><code>name</code></td><td><span class="badge rw">読み書き</span></td><td>スタックの名前</td></tr>
+  <tr><td><code>script</code></td><td><span class="badge">読む</span></td><td>スクリプト</td></tr>
+</table></div>
+<pre><code>put the name of this card into field "見出し"
+set the name of this stack to "わたしのスタック"</code></pre>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="chunks">
+<h2><span>9. チャンク（文字の一部）</span></h2>
+<div class="syntax"><i>単位</i> <i>番号</i> [to <i>番号</i>] of <i>値</i></div>
+<div class="table-wrap"><table>
+  <tr><th>単位</th><th>区切り</th><th>例</th><th>結果</th></tr>
+  <tr><td><code>char</code> / <code>character</code></td><td>1 文字ずつ（絵文字 1 つも 1 文字）</td><td><code>char 2 of "あいう"</code></td><td>い</td></tr>
+  <tr><td><code>word</code></td><td>空白・改行</td><td><code>word 2 to 3 of "a b c d"</code></td><td>b c</td></tr>
+  <tr><td><code>line</code></td><td>改行</td><td><code>line 1 of field "メモ"</code></td><td>1 行目</td></tr>
+  <tr><td><code>item</code></td><td><code>,</code></td><td><code>item 3 of "赤,青,緑"</code></td><td>緑</td></tr>
+</table></div>
+<p>番号は 1 から数えます。範囲の外なら空の文字です。チャンクは入れ子にできます：<code>char 1 of word 2 of line 3 of x</code></p>
+<p>数を数えるには <code>the number of</code> を使います：<code>the number of words in field "文"</code></p>
+<p class="warn">チャンクへの書き込み（<code>put "x" into word 2 of y</code>）はまだ使えません。</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="functions">
+<h2><span>10. 関数</span></h2>
+<p>組み込み関数は <code>名前(引数)</code> と書きます。引数が 1 つなら <code>the 名前 of 値</code> とも書けます（<code>the abs of -4</code>）。</p>
+
+<div class="entry">
+<h3>計算の関数</h3>
+<div class="table-wrap"><table>
+  <tr><th>関数</th><th>内容</th><th>例</th></tr>
+  <tr><td><code>random(n)</code></td><td>1〜n の整数をでたらめに 1 つ（n は切り捨て。1 未満なら 1）</td><td><code>random(6)</code></td></tr>
+  <tr><td><code>abs(x)</code></td><td>絶対値</td><td><code>abs(-3)</code> → 3</td></tr>
+  <tr><td><code>round(x)</code></td><td>四捨五入</td><td><code>round(2.5)</code> → 3</td></tr>
+  <tr><td><code>trunc(x)</code></td><td>小数点以下を切り捨て（0 に近い方へ）</td><td><code>trunc(-2.7)</code> → -2</td></tr>
+  <tr><td><code>sqrt(x)</code></td><td>平方根</td><td><code>sqrt(16)</code> → 4</td></tr>
+  <tr><td><code>max(…)</code> / <code>min(…)</code></td><td>いちばん大きい・小さい数</td><td><code>max(1, 5, 3)</code> → 5</td></tr>
+  <tr><td><code>sum(…)</code></td><td>合計</td><td><code>sum(1, 2, 3)</code> → 6</td></tr>
+  <tr><td><code>average(…)</code></td><td>平均</td><td><code>average(2, 4)</code> → 3</td></tr>
+</table></div>
+<p class="note"><code>max</code>・<code>min</code>・<code>sum</code>・<code>average</code> に値を 1 つだけ渡し、それが <code>,</code> を含む文字なら、項目の並びとして読みます：<code>max(field "点数")</code>（中身が「3,5,1」なら 5）</p>
+</div>
+
+<div class="entry">
+<h3>文字の関数</h3>
+<div class="table-wrap"><table>
+  <tr><th>関数</th><th>内容</th><th>例</th></tr>
+  <tr><td><code>length(s)</code></td><td>文字数</td><td><code>length("日本")</code> → 2</td></tr>
+  <tr><td><code>offset(a, b)</code></td><td>b の中で a が始まる位置（1 から。なければ 0。大文字・小文字は区別しない）</td><td><code>offset("c", "abc")</code> → 3</td></tr>
+  <tr><td><code>charToNum(c)</code></td><td>文字の番号（Unicode のコードポイント）</td><td><code>charToNum("A")</code> → 65</td></tr>
+  <tr><td><code>numToChar(n)</code></td><td>番号の文字</td><td><code>numToChar(66)</code> → B</td></tr>
+</table></div>
+</div>
+
+<div class="entry">
+<h3><code>the</code> で読む値</h3>
+<div class="table-wrap"><table>
+  <tr><th>書き方</th><th>内容</th><th>例</th></tr>
+  <tr><td><code>the date</code></td><td>今日の日付</td><td>2026/11/8</td></tr>
+  <tr><td><code>the long date</code></td><td>曜日付きの日付</td><td>2026年11月8日日曜日</td></tr>
+  <tr><td><code>the time</code></td><td>今の時刻（時:分）</td><td>14:05</td></tr>
+  <tr><td><code>the long time</code></td><td>秒までの時刻</td><td>14:05:09</td></tr>
+  <tr><td><code>the seconds</code></td><td>1970 年 1 月 1 日からの秒数（時間を計るのに使う）</td><td></td></tr>
+  <tr><td><code>the ticks</code></td><td>ページを開いてからの 60 分の 1 秒の数</td><td></td></tr>
+  <tr><td><code>the result</code></td><td>直前の <code>ask</code> でキャンセルしたら <code>Cancel</code>、そうでなければ空</td><td></td></tr>
+  <tr><td><code>the target</code></td><td>最初にメッセージを受け取ったもの</td><td></td></tr>
+  <tr><td><code>the number of …</code></td><td>数を数える（下の表）</td><td></td></tr>
+</table></div>
+<p><code>short</code>・<code>abbreviated</code>（<code>abbrev</code>・<code>abbr</code>）も書けますが、<code>long</code> 以外はふつうの形になります。</p>
+</div>
+
+<div class="entry">
+<h3><code>the number of</code></h3>
+<div class="table-wrap"><table>
+  <tr><th>書き方</th><th>数えるもの</th></tr>
+  <tr><td><code>the number of cards</code></td><td>スタックのカードの枚数</td></tr>
+  <tr><td><code>the number of buttons</code> / <code>fields</code></td><td>今のカードのボタン・フィールドの数（<code>btns</code>・<code>flds</code> とも）</td></tr>
+  <tr><td><code>the number of bg buttons</code> / <code>bg fields</code></td><td>背景のボタン・フィールドの数</td></tr>
+  <tr><td><code>the number of chars in x</code></td><td>文字・単語・行・項目の数（<code>chars</code>・<code>words</code>・<code>lines</code>・<code>items</code>。<code>in</code> の代わりに <code>of</code> も可）</td></tr>
+  <tr><td><code>the number of me</code></td><td>オブジェクトの番号（<code>the number of button "x"</code> など）</td></tr>
+</table></div>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="commands">
+<h2><span>11. 命令</span></h2>
+<p><code>[ ]</code> の中は省けます。<code>|</code> はどれか 1 つを書きます。</p>
+
+<div class="entry">
+<h3><code>put</code> — 値を書き込む</h3>
+<div class="syntax">put <i>値</i> [into | after | before <i>書き込み先</i>]</div>
+<p><code>into</code> は置き換え、<code>after</code> は後ろに足す、<code>before</code> は前に足す。書き込み先を省くとメッセージボックスへ書き込みます。書き込み先には、変数・フィールド（ボタンの名前で指した部品の文字も）・<code>msg</code> が使えます。</p>
+<pre><code>put "こんにちは" into field "あいさつ"
+put "!" after field "あいさつ"
+put 42                 -- メッセージボックスへ
+put total into result_box</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>get</code> — 値を <code>it</code> に入れる</h3>
+<div class="syntax">get <i>値</i></div>
+<pre><code>get field "名前"
+if it is empty then answer "名前を入れてください"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>set</code> — プロパティを変える</h3>
+<div class="syntax">set [the] <i>プロパティ</i> of <i>オブジェクト</i> to <i>値</i></div>
+<p>使えるプロパティは <a href="#properties">8. プロパティ</a> を見てください。</p>
+<pre><code>set the visible of field "ヒント" to false
+set the textAlign of field "見出し" to "center"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>add</code> / <code>subtract</code> / <code>multiply</code> / <code>divide</code> — 計算して書き戻す</h3>
+<div class="syntax">add <i>値</i> to <i>書き込み先</i>
+subtract <i>値</i> from <i>書き込み先</i>
+multiply <i>書き込み先</i> by <i>値</i>
+divide <i>書き込み先</i> by <i>値</i></div>
+<p>書き込み先の今の値を数として読み、計算した結果で置き換えます。空なら 0 として計算します。</p>
+<pre><code>add 1 to field "回数"
+multiply total by 1.1
+divide x by 4</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>go</code> — カードを移る</h3>
+<div class="syntax">go [to] <i>カード</i>
+go [to] back</div>
+<p><code>go back</code> は前に表示していたカードへ戻ります（最大 50 枚まで覚えています）。移ると <code>closeCard</code> → <code>openCard</code> が送られます。</p>
+<pre><code>go next card
+go prev
+go to card "目次"
+go card 2
+go back</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>go stack</code> — 別のスタックを開く</h3>
+<div class="syntax">go [to] stack <i>パス</i></div>
+<p>Web サーバー上のスタックを開きます。パスは <code>index.html</code> から見た場所か、<code>http://</code>・<code>https://</code> の URL です。名前が <code>.json</code> で終わらなければ <code>.stack.json</code> を補います。保存していない変更があれば、確認が出ます。</p>
+<pre><code>go stack "stacks/reference"       -- stacks/reference.stack.json
+go stack "https://example.com/my.stack.json"</code></pre>
+<p class="note">スタックが置き換わるので、<code>go stack</code> の後の行は実行されません。他のサイトのスタックは、そのサイトが読み込みを許可（CORS）していないと開けません。</p>
+</div>
+
+<div class="entry">
+<h3><code>visual effect</code> — 次の移動に効果を付ける</h3>
+<div class="syntax">visual [effect] wipe left | wipe right | dissolve | plain [[very] fast | slow]</div>
+<p>次の 1 回の <code>go</code>（<code>go back</code> も）にだけ効きます。<code>plain</code> は効果なし。指定しないときは、カード設定・スタック設定の効果を使います。</p>
+<div class="table-wrap"><table>
+  <tr><th>速さ</th><th>very fast</th><th>fast</th><th>（指定なし）</th><th>slow</th><th>very slow</th></tr>
+  <tr><td>長さ</td><td>0.15 秒</td><td>0.25 秒</td><td>0.4 秒</td><td>0.7 秒</td><td>1.1 秒</td></tr>
+</table></div>
+<pre><code>visual effect dissolve slow
+go next card</code></pre>
+<p class="note">端末で「視差効果を減らす（動きを減らす）」を設定していると、効果は付きません。</p>
+</div>
+
+<div class="entry">
+<h3><code>answer</code> — 知らせる・選んでもらう</h3>
+<div class="syntax">answer <i>文</i> [with <i>ボタン</i> [or <i>ボタン</i> …]]</div>
+<p>ダイアログを出し、押されるまで待ちます。押したボタンの文字が <code>it</code> に入ります。ボタンを省くと「OK」だけ。最後のボタンが既定のボタン（Enter で押せる）になります。</p>
+<pre><code>answer "保存しますか？" with "いいえ" or "はい"
+if it is "はい" then doMenu "保存…"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>ask</code> — 入力してもらう</h3>
+<div class="syntax">ask <i>文</i> [with <i>最初に入れておく文字</i>]</div>
+<p>入力された文字が <code>it</code> に入ります。キャンセルされたら <code>it</code> は空、<code>the result</code> は <code>Cancel</code> になります。</p>
+<pre><code>ask "お名前は？" with "ゲスト"
+if the result is "Cancel" then exit mouseUp
+put "こんにちは、" &amp; it &amp; "さん" into field "あいさつ"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>beep</code> — 音を鳴らす</h3>
+<div class="syntax">beep [<i>回数</i>]</div>
+<p>スタック設定の「beep で鳴らす音」を鳴らします（既定は <code>beep</code>）。回数を書くと、前の音が鳴り終わってから次を鳴らします（最大 10 回）。</p>
+</div>
+
+<div class="entry">
+<h3><code>play</code> — 名前を指定して音を鳴らす</h3>
+<div class="syntax">play <i>音の名前</i></div>
+<p>音は鳴らしたまま、すぐ次の行へ進みます。使える名前は <a href="#sounds">14. 音の名前</a>。知らない名前はエラーです。</p>
+<pre><code>play "chime"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>wait</code> — 待つ</h3>
+<div class="syntax">wait [for] <i>量</i> [seconds | milliseconds | ticks]</div>
+<p>単位を省くと tick（60 分の 1 秒）です。<code>second</code>・<code>secs</code>・<code>sec</code>、<code>millisecond</code>・<code>ms</code>、<code>tick</code> とも書けます。待っている間も、メニューの「ブラウズ」「エディット」で止められます。</p>
+<pre><code>wait 2 seconds
+wait 30          -- 0.5 秒
+wait 250 ms</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>hide</code> / <code>show</code> — 部品を隠す・出す</h3>
+<div class="syntax">hide <i>部品</i>
+show <i>部品</i></div>
+<pre><code>hide button "答え"
+show field "ヒント"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>doMenu</code> — メニューの項目を選ぶ</h3>
+<div class="syntax">doMenu <i>項目の名前</i></div>
+<p>メニューを選んだのと同じことをします。名前の末尾の「…」は省けます（<code>"..."</code> でも可）。今のモードで出ていないメニューの項目も選べますが、押せない状態の項目はエラーになります。使える名前は <a href="#menus">13. doMenu で選べる項目</a>。</p>
+<pre><code>doMenu "次のカード"
+doMenu "開く"</code></pre>
+<p class="note">項目の処理の終わりは待たずに次の行へ進みます。「ブラウズ」「エディット」を選ぶと、実行中のスクリプトはそこで止まります。</p>
+</div>
+
+<div class="entry">
+<h3><code>open url</code> — Web ページを開く</h3>
+<div class="syntax">open url <i>URL</i></div>
+<p>別のタブ（スマホでは別の画面）で開きます。使えるのは <code>http:</code>・<code>https:</code>・<code>mailto:</code>・<code>tel:</code> だけです。相対 URL は HycarPerd のページの場所が基準です。</p>
+<pre><code>open url "https://example.com/"
+open url "mailto:someone@example.com"</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>send</code> — メッセージを送る</h3>
+<div class="syntax">send <i>メッセージ</i> [to <i>オブジェクト</i>]</div>
+<p><a href="#handlers">2. ハンドラとメッセージ</a> を見てください。</p>
+</div>
+
+<div class="entry">
+<h3><code>global</code> — グローバル変数を宣言する</h3>
+<div class="syntax">global <i>名前</i> [, <i>名前</i> …]</div>
+<p><a href="#variables">3. 変数</a> を見てください。</p>
+</div>
+
+<div class="entry">
+<h3><code>return</code> — 関数の値を返す</h3>
+<div class="syntax">return [<i>値</i>]</div>
+<p>ハンドラを終えます。<code>function</code> ハンドラでは、その値が関数の値になります。値を省くと空。</p>
+</div>
+
+<div class="entry">
+<h3><code>pass</code> — メッセージを次へ渡す</h3>
+<div class="syntax">pass <i>メッセージ名</i></div>
+</div>
+
+<div class="entry">
+<h3><code>exit</code> — 途中で終える</h3>
+<div class="syntax">exit <i>ハンドラ名</i>      -- このハンドラを終える
+exit repeat          -- いちばん内側の repeat を抜ける
+next repeat          -- repeat の次の回へ進む
+exit to HyperCard    -- 実行中のスクリプトをすべて終える（exit to HycarPerd も可）</div>
+<pre><code>on mouseUp
+  ask "パスワード"
+  if it is not "1234" then exit mouseUp
+  go card "秘密"
+end mouseUp</code></pre>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="control">
+<h2><span>12. 制御構文（if・repeat）</span></h2>
+
+<div class="entry">
+<h3><code>if</code></h3>
+<p>条件は true か false になる式です（ほかの値はエラー）。</p>
+<div class="syntax">-- 1行で
+if <i>条件</i> then <i>文</i> [else <i>文</i>]
+
+-- else を次の行に
+if <i>条件</i> then <i>文</i>
+else <i>文</i>
+
+-- 複数行
+if <i>条件</i> then
+  <i>文</i>
+else if <i>条件</i> then
+  <i>文</i>
+else
+  <i>文</i>
+end if</div>
+<pre><code>if field "点数" &gt;= 80 then
+  put "合格"
+else if field "点数" &gt;= 60 then
+  put "もう少し"
+else
+  put "不合格"
+end if</code></pre>
+</div>
+
+<div class="entry">
+<h3><code>repeat</code></h3>
+<div class="syntax">repeat [for] <i>回数</i> [times]
+repeat with <i>変数</i> = <i>始め</i> [down] to <i>終わり</i>
+repeat while <i>条件</i>
+repeat until <i>条件</i>
+repeat [forever]
+  <i>文</i>
+end repeat</div>
+<div class="table-wrap"><table>
+  <tr><th>形</th><th>くり返し方</th></tr>
+  <tr><td><code>repeat 5</code></td><td>5 回（<code>repeat for 5 times</code> とも）</td></tr>
+  <tr><td><code>repeat with i = 1 to 10</code></td><td>i を 1 ずつ増やしながら、10 を超えるまで。<code>down to</code> なら 1 ずつ減らす</td></tr>
+  <tr><td><code>repeat while x &lt; 10</code></td><td>条件が true の間（最初に確かめる）</td></tr>
+  <tr><td><code>repeat until x &gt;= 10</code></td><td>条件が true になるまで（最初に確かめる）</td></tr>
+  <tr><td><code>repeat</code> / <code>repeat forever</code></td><td><code>exit repeat</code> まで続ける</td></tr>
+</table></div>
+<pre><code>put 0 into total
+repeat with i = 1 to 10
+  if i mod 2 = 0 then next repeat
+  add i to total
+end repeat
+put total   -- 25（奇数の合計）</code></pre>
+<p class="note">終わらないくり返しは、「ブラウズ」「エディット」を選び直すと止まります。止めないままでも、100 万回の文を実行すると自動で止まります。</p>
+</div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="menus">
+<h2><span>13. doMenu で選べる項目</span></h2>
+<div class="table-wrap"><table>
+  <tr><th>メニュー</th><th>項目の名前</th></tr>
+  <tr><td>ファイル</td><td><code>開く…</code>、<code>保存…</code>、<code>サンプルを開く</code></td></tr>
+  <tr><td>編集</td><td><code>カード編集</code>、<code>背景編集</code>、<code>描画を取り消す</code>、<code>画像を取り込む…</code>、<code>部品を削除</code>、<code>新規カード</code>、<code>カード複製</code>、<code>カードを削除</code>、<code>新規スタック…</code></td></tr>
+  <tr><td>ツール</td><td><code>部品の情報…</code>、<code>カード設定…</code>、<code>背景設定…</code>、<code>スタック設定…</code></td></tr>
+  <tr><td>移動</td><td><code>戻る</code>、<code>最初のカード</code>、<code>前のカード</code>、<code>次のカード</code>、<code>最後のカード</code></td></tr>
+  <tr><td>スタック</td><td><code>ブラウズ</code>、<code>エディット</code>、<code>スタック情報</code>、<code>メッセージボックス</code></td></tr>
+</table></div>
+<p class="note">ロックしたスタック（<code>"lock": "on"</code>）では、「エディット」と「保存…」は選べません。</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="sounds">
+<h2><span>14. 音の名前</span></h2>
+<p><code>play</code>、ボタンの <code>sound</code>、スタック設定の「beep で鳴らす音」で使えます。すべてその場で作る電子音です。</p>
+<div class="table-wrap"><table>
+  <tr><th>名前</th><th>音</th></tr>
+  <tr><td><code>beep</code></td><td>ピッ</td></tr>
+  <tr><td><code>click</code></td><td>カチッ</td></tr>
+  <tr><td><code>pop</code></td><td>ポン</td></tr>
+  <tr><td><code>boing</code></td><td>ビョーン</td></tr>
+  <tr><td><code>chime</code></td><td>ピンポン</td></tr>
+  <tr><td><code>buzz</code></td><td>ブブー</td></tr>
+  <tr><td><code>coin</code></td><td>ピロン</td></tr>
+  <tr><td><code>fanfare</code></td><td>ファンファーレ</td></tr>
+</table></div>
+<p class="note">iPhone は本体の消音スイッチがオンだと鳴りません。また、画面に一度触れるまで音は鳴りません。</p>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="limits">
+<h2><span>15. 制限と安全のための決まり</span></h2>
+<div class="table-wrap"><table>
+  <tr><th>項目</th><th>決まり</th></tr>
+  <tr><td>実行できる文の数</td><td>1 回のメッセージで 100 万文まで。超えると「処理の回数が多すぎるため止めました。」</td></tr>
+  <tr><td>スクリプトの中断</td><td>スタックメニューで「ブラウズ」「エディット」を選ぶと止まる（<code>wait</code> の途中でも）</td></tr>
+  <tr><td>実行中の画面の操作</td><td>スクリプトの実行中は、ボタンの mouseUp とカードの移動（メニュー・スワイプ・キー）を受け付けない</td></tr>
+  <tr><td><code>beep</code> の回数</td><td>最大 10 回</td></tr>
+  <tr><td><code>open url</code></td><td><code>http:</code>・<code>https:</code>・<code>mailto:</code>・<code>tel:</code> だけ（<code>javascript:</code> などは開けない）</td></tr>
+  <tr><td><code>go stack</code></td><td>Web サーバー上のスタックだけ（パソコンの中のファイルは開けない）</td></tr>
+  <tr><td>カードの枚数</td><td>1 スタック 10 枚まで</td></tr>
+  <tr><td>エディット中</td><td>スクリプトは動かず、メッセージも送られない</td></tr>
+</table></div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="errors">
+<h2><span>16. よく出るエラー</span></h2>
+<p>エラーが起きると、どのスクリプトの何行目かを添えたダイアログが出て、スクリプトはそこで止まります。</p>
+<div class="table-wrap"><table>
+  <tr><th>メッセージ</th><th>よくある原因</th></tr>
+  <tr><td>「end mouseUp」が見つかりません。</td><td><code>on</code> に対応する <code>end</code> がない、または名前が違う</td></tr>
+  <tr><td>「end if」・「end repeat」が見つかりません。</td><td>複数行の <code>if</code>・<code>repeat</code> を閉じていない</td></tr>
+  <tr><td>「xxx」という命令はありません。</td><td>命令の打ち間違い、または呼んだハンドラがどこにもない</td></tr>
+  <tr><td>「xxx」という関数はありません。</td><td>関数の打ち間違い、または function ハンドラがない</td></tr>
+  <tr><td>ボタン「xxx」が見つかりません。</td><td>パーツIDの違い、カードと背景の取り違え</td></tr>
+  <tr><td>カード「xxx」が見つかりません。／カード n はありません。</td><td>カードの名前・番号の違い</td></tr>
+  <tr><td>「xxx」は数値ではありません。</td><td>数でない文字で計算した（値を入れていない変数は名前の文字になる）</td></tr>
+  <tr><td>「xxx」は true でも false でもありません。</td><td><code>if</code> の条件が比べる式になっていない</td></tr>
+  <tr><td>0 で割ることはできません。</td><td>割る数が 0</td></tr>
+  <tr><td>ボタン「x」に「xxx」はありません。／「xxx」は変更できません。</td><td>そのオブジェクトにないプロパティ、読むだけのプロパティを <code>set</code> した</td></tr>
+  <tr><td>「xxx」というメニュー項目はありません。／今は選べません。</td><td><code>doMenu</code> の名前の違い、押せない状態の項目</td></tr>
+  <tr><td>「xxx」という音はありません。</td><td><code>play</code> の音の名前の違い</td></tr>
+  <tr><td>文字や単語の一部への書き込みは、まだ使えません。</td><td><code>put … into word 2 of x</code> のようなチャンクへの書き込み</td></tr>
+</table></div>
+</section>
+
+<!-- ================================================================ -->
+<section class="chapter" id="examples">
+<h2><span>17. 例</span></h2>
+
+<div class="entry">
+<h3>押した回数を数える</h3>
+<pre><code>-- ボタンのスクリプト
+on mouseUp
+  add 1 to field "回数"
+  if field "回数" &gt;= 10 then
+    play "fanfare"
+    answer "10回押しました！"
+    put 0 into field "回数"
+  end if
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3>おみくじ</h3>
+<pre><code>on mouseUp
+  put "大吉,中吉,小吉,吉,凶" into kuji
+  put item random(the number of items in kuji) of kuji into field "結果"
+  play "coin"
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3>クイズ（背景のスクリプトで全カード共通）</h3>
+<pre><code>-- 背景のスクリプト
+on openCard
+  put empty into field "答え"
+  hide field "正解"
+end openCard
+
+on check expected
+  if field "答え" is expected then
+    play "chime"
+    show field "正解"
+    wait 1 second
+    visual effect wipe left
+    go next card
+  else
+    play "buzz"
+  end if
+end check
+
+-- 各カードの「答える」ボタン
+on mouseUp
+  check "東京"
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3>ストップウォッチ</h3>
+<pre><code>on mouseUp
+  global startTime
+  if the label of me is "スタート" then
+    put the ticks into startTime
+    set the label of me to "ストップ"
+  else
+    put (the ticks - startTime) / 60 into elapsed
+    put round(elapsed * 10) / 10 &amp; " 秒" into field "時間"
+    set the label of me to "スタート"
+  end if
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3>ランダムなカードへ移る（同じカードは避ける）</h3>
+<pre><code>on mouseUp
+  put the number of this card into here
+  repeat
+    put random(the number of cards) into n
+    if n is not here then exit repeat
+  end repeat
+  visual effect dissolve
+  go card n
+end mouseUp</code></pre>
+</div>
+
+<div class="entry">
+<h3>メッセージボックスに記録を残す</h3>
+<pre><code>on openCard
+  put the time &amp;&amp; the name of this card &amp; return after msg
+  pass openCard
+end openCard</code></pre>
+</div>
+</section>
+
+<footer>HycarTalk リファレンス — HycarPerd 付属。スタックの中で試すには、リファレンスのスタック（stacks/reference）の「例を実行」も使えます。</footer>
+</main>
+</div>
+
+<script>
+  // 目次の開閉（スマホ）。
+  const tocToggle = document.querySelector(".toc-toggle");
+  const toc = document.querySelector("#toc");
+
+  tocToggle.addEventListener("click", () => {
+    const isOpen = toc.classList.toggle("is-open");
+    tocToggle.setAttribute("aria-expanded", String(isOpen));
+  });
+
+  toc.addEventListener("click", (event) => {
+    if (event.target.closest("a")) {
+      toc.classList.remove("is-open");
+      tocToggle.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  // 検索：入力した言葉を含む項目（entry）と章だけを出す。
+  const searchInput = document.querySelector("#search");
+  const chapters = [...document.querySelectorAll("section.chapter")];
+  const noResults = document.querySelector("#no-results");
+
+  const applySearch = () => {
+    const query = searchInput.value.trim().toLowerCase();
+    let visibleCount = 0;
+
+    for (const chapter of chapters) {
+      const entries = [...chapter.querySelectorAll(".entry")];
+      const chapterMatches = chapter.textContent.toLowerCase().includes(query);
+
+      if (!query) {
+        chapter.hidden = false;
+        entries.forEach((entry) => { entry.hidden = false; });
+        visibleCount += 1;
+        continue;
+      }
+
+      if (entries.length === 0) {
+        chapter.hidden = !chapterMatches;
+      } else {
+        let entryMatches = 0;
+
+        for (const entry of entries) {
+          const matches = entry.textContent.toLowerCase().includes(query);
+          entry.hidden = !matches;
+          entryMatches += matches ? 1 : 0;
+        }
+
+        chapter.hidden = entryMatches === 0;
+      }
+
+      visibleCount += chapter.hidden ? 0 : 1;
+    }
+
+    noResults.style.display = visibleCount === 0 ? "block" : "none";
+  };
+
+  searchInput.addEventListener("input", applySearch);
+</script>
+</body>
+</html>

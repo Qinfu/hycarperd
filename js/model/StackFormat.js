@@ -52,8 +52,9 @@ export const DEFAULT_TEXT_ALIGN = "left";
 // カードを切り替えるときの効果（スクリプトで visual effect を指定しなかったとき）。
 // wipe は次のカードへなら左へ、前のカードへなら右へ拭き取る。
 // カードごとに設定でき、移る先のカードの効果を使う。カードの効果が空ならスタックの効果に従う。
-export const CARD_EFFECTS = ["wipe", "dissolve", "none"];
-export const DEFAULT_STACK_EFFECT = "wipe";
+export const CARD_EFFECT = { wipe: "wipe", dissolve: "dissolve", none: "none" };
+export const CARD_EFFECTS = Object.values(CARD_EFFECT);
+export const DEFAULT_STACK_EFFECT = CARD_EFFECT.wipe;
 
 // ボタン・フィールドの文字の大きさ（ドット）。設定画面の選択肢と、スクリプトで指定できる範囲。
 export const PART_TEXT_SIZES = [12, 14, 16, 18, 24];
@@ -62,6 +63,10 @@ export const PART_TEXT_SIZE_RANGE = { min: 6, max: 96 };
 
 // beep で鳴らす音の既定。音の名前は js/ui/Sound.js のもの（知らない名前なら鳴らさない）。
 export const DEFAULT_BEEP_SOUND = "beep";
+
+// stack.lock がこの値（大文字・小文字は問わない）なら、閲覧だけのスタックにする（エディットも保存もできない）。
+// 配布するスタックを誤って変えないための印で、画面からは変えず、JSON を直接書き換えて付け外しする。
+export const STACK_LOCK_ON = "on";
 
 // カード・背景の絵はPNGのデータURLで持つ。
 export const PICTURE_PREFIX = "data:image/png;base64,";

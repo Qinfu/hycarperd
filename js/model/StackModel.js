@@ -10,6 +10,7 @@ import {
   DEFAULT_STACK_EFFECT,
   DEFAULT_TEXT_ALIGN,
   FIRST_CARD_NAME,
+  STACK_LOCK_ON,
   NEW_PART_KIND,
   NEW_PART_PLACEMENT,
   PART_DEFAULTS,
@@ -153,6 +154,12 @@ export const fsCreatePart = (xKind, xOwner, xCardSize) => {
 
 export const fsCardSize = (xStack) => {
   return { width: xStack.stack.width, height: xStack.stack.height };
+};
+
+// 手で書く項目なので、"on" 以外の値（"off"、空、文字でない値、項目なし）はすべてロックしていないものとする。
+export const fsIsStackLocked = (xStack) => {
+  const xLock = xStack.stack.lock;
+  return typeof xLock === "string" && xLock.trim().toLowerCase() === STACK_LOCK_ON;
 };
 
 // カードが属する背景。今は1スタックに背景1つだが、データは複数持てる形にしてある。

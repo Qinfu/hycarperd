@@ -1,48 +1,75 @@
-import { MIN_PART_SIZE, PART_TEXT_SIZES, TEXT_ALIGNS } from "../model/StackFormat.js";
+/*
+ * 部品・カード・背景・スタックの設定を、モーダルのダイアログで表示する。
+ * 変更はその場で反映し、「OK」（Esc）で閉じる。入力欄そのものは InspectorForm.js が作る。
+ *
+ * handlers:
+ *   onChange(rerender) 値が変わるたびに呼ばれる。rerender が true ならカードを描き直す。
+ *   onDeletePart(part) 部品の削除ボタンで呼ばれる。
+ */
+import { CARD_EFFECT, NEW_PART_KIND, PART_TEXT_SIZES, TEXT_ALIGNS } from "../model/StackFormat.js";
 import { fsFieldText, fsSetFieldText } from "../model/StackModel.js";
-import { fsCheckScript } from "../hypertalk/Parser.js";
-import { fsPlaySound, fsSoundOptions } from "./Sound.js";
+import { fsSoundOptions } from "../sound/Sound.js";
+import { DIALOG_CLASS, DIALOG_LABELS, fsCreateDialogFrame } from "./DialogFrame.js";
+import { InspectorForm } from "./InspectorForm.js";
 
 // スクリプトで visual effect を指定しなかったときの効果。
 const EFFECT_OPTIONS = [
-  ["wipe", "ワイプ（進む向きに拭き取る）"],
-  ["dissolve", "ディゾルブ（点々に崩れる）"],
-  ["none", "なし"]
+  [CARD_EFFECT.wipe, "ワイプ（進む向きに拭き取る）"],
+  [CARD_EFFECT.dissolve, "ディゾルブ（点々に崩れる）"],
+  [CARD_EFFECT.none, "なし"]
 ];
 
 // カードの効果。空ならスタックの効果に従う。
-const CARD_EFFECT_OPTIONS = [["", "スタックの設定に従う"], ...EFFECT_OPTIONS];
+const FOLLOW_STACK_EFFECT = "";
+const CARD_EFFECT_OPTIONS = [[FOLLOW_STACK_EFFECT, "スタックの設定に従う"], ...EFFECT_OPTIONS];
 
 const TEXT_ALIGN_NAMES = { left: "左揃え", center: "中央揃え", right: "右揃え" };
 const TEXT_ALIGN_OPTIONS = TEXT_ALIGNS.map((xAlign) => [xAlign, TEXT_ALIGN_NAMES[xAlign]]);
 
+// 部品の種類ごとに選べる見た目（保存形式の style の値）。
 const STYLE_OPTIONS = {
-  button: [
+  [NEW_PART_KIND.button]: [
     ["roundrect", "角丸"],
     ["rectangle", "四角"],
     ["shadow", "影付き"],
     ["transparent", "透明"]
   ],
-  field: [
+  [NEW_PART_KIND.field]: [
     ["rectangle", "四角"],
     ["shadow", "影付き"],
     ["transparent", "透明"]
   ]
 };
 
-/*
- * 部品・カード・背景・スタックの設定を、モーダルのダイアログで表示する。
- * 変更はその場で反映し、「OK」で閉じる。
- *
- * handlers:
- *   onChange(rerender) 値が変わるたびに呼ばれる。rerender が true ならカードを描き直す。
- *   onDeletePart(part) 部品の削除ボタンで呼ばれる。
- */
+const NO_SOUND_OPTION = ["", "なし"];
+
+// 背景のフィールドの文字は、全カードで同じにしていなければカードごと。
+const FIELD_TEXT_LABEL = { shared: "テキスト", perCard: "テキスト（このカードの内容）" };
+
+const TITLE_ID = "info-title";
+
+const fsFieldTextLabel = (xIsBackground, xSharedText) => {
+  return xIsBackground && !xSharedText ? FIELD_TEXT_LABEL.perCard : FIELD_TEXT_LABEL.shared;
+};
+
+// 見出しに出す部品の種類の名前。テキストパーツは文字を固定したフィールド。
+const fsPartKindName = (xPart) => {
+  if (xPart.type === NEW_PART_KIND.button) {
+    return "ボタン";
+  }
+
+  return xPart.lockText ? "テキスト" : "フィールド";
+};
+
+const fsCountParts = (xOwner, xType) => {
+  return xOwner.parts.filter((xPart) => xPart.type === xType).length;
+};
+
 export class Inspector {
   constructor(xHandlers) {
     this.handlers = xHandlers;
     this.backdrop = null;
-    this.container = null;
+    this.form = null;
     this.footer = null;
   }
 
@@ -57,196 +84,179 @@ export class Inspector {
 
     this.backdrop.remove();
     this.backdrop = null;
-    this.container = null;
+    this.form = null;
   }
 
-  // 背景のフィールドの中身はカードごとなので、今のカード（xCard）を受け取る。
+  // 値を変えたら、カードを描き直すかどうかを添えて知らせる。setValue(value) でデータに入れる。
+  changeWith(xRerender, xSetValue) {
+    return (xValue) => {
+      xSetValue(xValue);
+      this.handlers.onChange(xRerender);
+    };
+  }
+
+  // 背景のフィールドの中身はカードごとなので、今のカード（card）を受け取る。
   showPart(xPart, xCardSize, xCard, xIsBackground) {
+    const xIsButton = xPart.type === NEW_PART_KIND.button;
+    const xIsField = xPart.type === NEW_PART_KIND.field;
     // テキストパーツは文字を固定したフィールド。入力フィールドとは出す項目を変える。
-    const xIsText = xPart.type === "field" && xPart.lockText;
-    const xKindName = xPart.type === "button" ? "ボタン" : xIsText ? "テキスト" : "フィールド";
-    const xTypeName = `${xIsBackground ? "背景" : ""}${xKindName}`;
+    const xIsTextPart = xIsField && xPart.lockText;
+    const xTypeName = `${xIsBackground ? "背景" : ""}${fsPartKindName(xPart)}`;
+    const xForm = this.start(`${xTypeName}情報`);
     let xTextInput = null;
-    this.xStart(`${xTypeName}情報`);
 
     // パーツIDは部品の名前で、スクリプトで部品を指すときに使う（button "名前"）。ボタンの見た目は「ラベル」。
-    this.xTextInput("パーツID", xPart.name, (xValue) => {
+    xForm.textInput("パーツID", xPart.name, this.changeWith(true, (xValue) => {
       xPart.name = xValue;
-      this.handlers.onChange(true);
-    });
+    }));
 
-    if (xPart.type === "button") {
-      this.xTextInput("ラベル", xPart.label, (xValue) => {
+    if (xIsButton) {
+      xForm.textInput("ラベル", xPart.label, this.changeWith(true, (xValue) => {
         xPart.label = xValue;
-        this.handlers.onChange(true);
-      });
+      }));
     }
 
-    if (xPart.type === "field") {
-      const xLabel = xIsBackground && !xPart.sharedText ? "テキスト（このカードの内容）" : "テキスト";
-      xTextInput = this.xTextArea(xLabel, fsFieldText(xPart, xCard, xIsBackground), "field-text-input", (xValue) => {
+    if (xIsField) {
+      const xLabel = fsFieldTextLabel(xIsBackground, xPart.sharedText);
+      const xText = fsFieldText(xPart, xCard, xIsBackground);
+      xTextInput = xForm.textArea(xLabel, xText, "field-text-input", this.changeWith(true, (xValue) => {
         fsSetFieldText(xPart, xCard, xIsBackground, xValue);
-        this.handlers.onChange(true);
-      });
+      }));
     }
 
-    this.xSelect("スタイル", STYLE_OPTIONS[xPart.type], xPart.style, (xValue) => {
+    xForm.select("スタイル", STYLE_OPTIONS[xPart.type], xPart.style, this.changeWith(true, (xValue) => {
       xPart.style = xValue;
-      this.handlers.onChange(true);
-    });
+    }));
 
     // スクリプトで選択肢にない大きさにしたときは、その大きさも選択肢に出す。
     const xTextSizes = [...new Set([...PART_TEXT_SIZES, xPart.textSize])].sort((xA, xB) => xA - xB);
-    this.xSelect("文字の大きさ", xTextSizes.map((xSize) => [String(xSize), `${xSize} ドット`]),
-      String(xPart.textSize), (xValue) => {
-        xPart.textSize = Number(xValue);
-        this.handlers.onChange(true);
-      });
+    const xTextSizeOptions = xTextSizes.map((xSize) => [String(xSize), `${xSize} ドット`]);
+    xForm.select("文字の大きさ", xTextSizeOptions, String(xPart.textSize), this.changeWith(true, (xValue) => {
+      xPart.textSize = Number(xValue);
+    }));
 
-    if (xIsText) {
-      this.xSelect("文字の揃え", TEXT_ALIGN_OPTIONS, xPart.textAlign, (xValue) => {
+    if (xIsTextPart) {
+      xForm.select("文字の揃え", TEXT_ALIGN_OPTIONS, xPart.textAlign, this.changeWith(true, (xValue) => {
         xPart.textAlign = xValue;
-        this.handlers.onChange(true);
-      });
+      }));
     }
 
-    this.xCheckbox("表示する", xPart.visible, (xValue) => {
+    xForm.checkbox("表示する", xPart.visible, this.changeWith(true, (xValue) => {
       xPart.visible = xValue;
-      this.handlers.onChange(true);
-    });
+    }));
 
-    if (xIsText) {
-      this.xCheckbox("スクロールバーを表示", xPart.scrollbar, (xValue) => {
+    if (xIsTextPart) {
+      xForm.checkbox("スクロールバーを表示", xPart.scrollbar, this.changeWith(true, (xValue) => {
         xPart.scrollbar = xValue;
-        this.handlers.onChange(true);
-      });
+      }));
 
       // オフなら、閲覧中に押しても選ばれず（枠線も出ず）、スクリプトも動かない。
-      this.xCheckbox("スクリプト有効", xPart.clickable, (xValue) => {
+      xForm.checkbox("スクリプト有効", xPart.clickable, this.changeWith(true, (xValue) => {
         xPart.clickable = xValue;
-        this.handlers.onChange(true);
-      });
+      }));
     }
 
-    if (xPart.type === "button") {
-      this.xSoundSelect("押したときの音", [["", "なし"], ...fsSoundOptions()], xPart.sound, (xValue) => {
+    if (xIsButton) {
+      const xSoundOptions = [NO_SOUND_OPTION, ...fsSoundOptions()];
+      xForm.soundSelect("押したときの音", xSoundOptions, xPart.sound, this.changeWith(false, (xValue) => {
         xPart.sound = xValue;
-        this.handlers.onChange(false);
-      });
+      }));
     }
 
-    if (xPart.type === "field" && xIsBackground) {
-      this.xCheckbox("全カードで同じ文字にする", xPart.sharedText, (xValue) => {
+    // 切り替えると、文字欄の中身と名前を、全カード共通の文字とカードごとの文字で入れ替える。
+    if (xIsField && xIsBackground) {
+      xForm.checkbox("全カードで同じ文字にする", xPart.sharedText, this.changeWith(true, (xValue) => {
         xPart.sharedText = xValue;
         xTextInput.value = fsFieldText(xPart, xCard, xIsBackground);
-        xTextInput.closest("label").firstChild.textContent = xValue ? "テキスト" : "テキスト（このカードの内容）";
-        this.handlers.onChange(true);
-      });
+        xTextInput.closest("label").firstChild.textContent = fsFieldTextLabel(xIsBackground, xValue);
+      }));
     }
 
-    this.xRectInputs(xPart, xCardSize);
-    this.xScriptInput(`${xTypeName}のスクリプト`, xPart);
-
-    const xDelete = document.createElement("button");
-    xDelete.type = "button";
-    xDelete.className = "info-delete";
-    xDelete.textContent = "削除…";
-    xDelete.addEventListener("click", () => this.handlers.onDeletePart(xPart));
-    this.footer.prepend(xDelete);
-    this.xFocusDefault();
+    xForm.rectInputs(xPart, xCardSize);
+    this.addScriptInput(xForm, `${xTypeName}のスクリプト`, xPart);
+    this.addDeleteButton(xPart);
+    this.focusDefaultButton();
   }
 
   showCard(xCard) {
-    this.xStart("カード設定");
+    const xForm = this.start("カード設定");
 
-    this.xTextInput("カード名", xCard.name, (xValue) => {
+    xForm.textInput("カード名", xCard.name, this.changeWith(true, (xValue) => {
       xCard.name = xValue;
-      this.handlers.onChange(true);
-    });
+    }));
 
-    this.xSelect("このカードへ移るときの効果", CARD_EFFECT_OPTIONS, xCard.effect, (xValue) => {
+    xForm.select("このカードへ移るときの効果", CARD_EFFECT_OPTIONS, xCard.effect, this.changeWith(false, (xValue) => {
       xCard.effect = xValue;
-      this.handlers.onChange(false);
-    });
+    }));
 
-    this.xScriptInput("カードのスクリプト", xCard);
-    this.xFocusDefault();
+    this.addScriptInput(xForm, "カードのスクリプト", xCard);
+    this.focusDefaultButton();
   }
 
   showBackground(xBackground) {
-    this.xStart("背景設定");
+    const xForm = this.start("背景設定");
 
-    this.xTextInput("背景名", xBackground.name, (xValue) => {
+    xForm.textInput("背景名", xBackground.name, this.changeWith(true, (xValue) => {
       xBackground.name = xValue;
-      this.handlers.onChange(true);
-    });
+    }));
 
-    this.xHint(`背景の部品：ボタン ${xBackground.parts.filter((xPart) => xPart.type === "button").length} 個、`
-      + `フィールド ${xBackground.parts.filter((xPart) => xPart.type === "field").length} 個`);
-    this.xScriptInput("背景のスクリプト", xBackground);
-    this.xFocusDefault();
+    const xButtonCount = fsCountParts(xBackground, NEW_PART_KIND.button);
+    const xFieldCount = fsCountParts(xBackground, NEW_PART_KIND.field);
+    xForm.hint(`背景の部品：ボタン ${xButtonCount} 個、フィールド ${xFieldCount} 個`);
+    this.addScriptInput(xForm, "背景のスクリプト", xBackground);
+    this.focusDefaultButton();
   }
 
   showStack(xStack) {
-    this.xStart("スタック設定");
+    const xInfo = xStack.stack;
+    const xForm = this.start("スタック設定");
 
-    this.xTextInput("スタック名", xStack.stack.name, (xValue) => {
-      xStack.stack.name = xValue;
-      this.handlers.onChange(true);
-    });
+    xForm.textInput("スタック名", xInfo.name, this.changeWith(true, (xValue) => {
+      xInfo.name = xValue;
+    }));
 
-    this.xTextInput("作者", xStack.stack.author, (xValue) => {
-      xStack.stack.author = xValue;
-      this.handlers.onChange(false);
-    });
+    xForm.textInput("作者", xInfo.author, this.changeWith(false, (xValue) => {
+      xInfo.author = xValue;
+    }));
 
-    this.xTextInput("ヴァージョン", xStack.stack.version, (xValue) => {
-      xStack.stack.version = xValue;
-      this.handlers.onChange(false);
-    });
+    xForm.textInput("ヴァージョン", xInfo.version, this.changeWith(false, (xValue) => {
+      xInfo.version = xValue;
+    }));
 
-    this.xSelect("カードの切り替え効果（既定）", EFFECT_OPTIONS, xStack.stack.effect, (xValue) => {
-      xStack.stack.effect = xValue;
-      this.handlers.onChange(false);
-    });
+    xForm.select("カードの切り替え効果（既定）", EFFECT_OPTIONS, xInfo.effect, this.changeWith(false, (xValue) => {
+      xInfo.effect = xValue;
+    }));
 
-    this.xSoundSelect("beep で鳴らす音", fsSoundOptions(), xStack.stack.beepSound, (xValue) => {
-      xStack.stack.beepSound = xValue;
-      this.handlers.onChange(false);
-    });
+    xForm.soundSelect("beep で鳴らす音", fsSoundOptions(), xInfo.beepSound, this.changeWith(false, (xValue) => {
+      xInfo.beepSound = xValue;
+    }));
 
-    this.xHint(`カードの大きさ：${xStack.stack.width} × ${xStack.stack.height}`);
-    this.xScriptInput("スタックのスクリプト", xStack.stack);
-    this.xFocusDefault();
+    xForm.hint(`カードの大きさ：${xInfo.width} × ${xInfo.height}`);
+    this.addScriptInput(xForm, "スタックのスクリプト", xInfo);
+    this.focusDefaultButton();
   }
 
-  // クラシックMac風のダイアログを作り、項目を入れる場所（this.container）を用意する。
-  xStart(xTitle) {
+  // ダイアログを作り、項目を入れる InspectorForm を返す。前に開いていたものは閉じる。
+  start(xTitle) {
     this.close();
 
-    const xBackdrop = document.createElement("div");
-    const xDialog = document.createElement("div");
+    const { backdrop: xBackdrop, dialog: xDialog } = fsCreateDialogFrame(`${DIALOG_CLASS.dialog} info-dialog`, "dialog");
     const xHeading = document.createElement("h2");
     const xBody = document.createElement("div");
     const xFooter = document.createElement("div");
     const xOk = document.createElement("button");
 
-    xBackdrop.className = "dialog-backdrop";
-    xDialog.className = "dialog info-dialog";
-    xDialog.setAttribute("role", "dialog");
-    xDialog.setAttribute("aria-modal", "true");
-    xDialog.setAttribute("aria-labelledby", "info-title");
-    xHeading.id = "info-title";
+    xDialog.setAttribute("aria-labelledby", TITLE_ID);
+    xHeading.id = TITLE_ID;
     xHeading.textContent = xTitle;
     xBody.className = "info-body";
-    xFooter.className = "dialog-buttons info-footer";
+    xFooter.className = `${DIALOG_CLASS.buttons} info-footer`;
     xOk.type = "button";
-    xOk.className = "is-default";
-    xOk.textContent = "OK";
+    xOk.className = DIALOG_CLASS.defaultButton;
+    xOk.textContent = DIALOG_LABELS.ok;
     xOk.addEventListener("click", () => this.close());
     xFooter.append(xOk);
     xDialog.append(xHeading, xBody, xFooter);
-    xBackdrop.append(xDialog);
 
     xDialog.addEventListener("keydown", (xEvent) => {
       if (xEvent.key === "Escape") {
@@ -256,144 +266,27 @@ export class Inspector {
 
     document.body.append(xBackdrop);
     this.backdrop = xBackdrop;
-    this.container = xBody;
     this.footer = xFooter;
+    this.form = new InspectorForm(xBody, (xRerender) => this.handlers.onChange(xRerender));
+    return this.form;
+  }
+
+  // スクリプトを書き換えても見た目は変わらないので、カードは描き直さない。
+  addScriptInput(xForm, xLabelText, xOwner) {
+    xForm.scriptInput(xLabelText, xOwner, () => this.handlers.onChange(false));
+  }
+
+  addDeleteButton(xPart) {
+    const xDelete = document.createElement("button");
+    xDelete.type = "button";
+    xDelete.className = "info-delete";
+    xDelete.textContent = "削除…";
+    xDelete.addEventListener("click", () => this.handlers.onDeletePart(xPart));
+    this.footer.prepend(xDelete);
   }
 
   // 入力欄に合わせるとスマホでキーボードが勝手に開くため、OKボタンに合わせる。
-  xFocusDefault() {
-    this.footer.querySelector(".is-default").focus({ preventScroll: true });
-  }
-
-  xHint(xText) {
-    const xHint = document.createElement("p");
-    xHint.className = "inspector-hint";
-    xHint.textContent = xText;
-    this.container.append(xHint);
-  }
-
-  xField(xLabelText, xControl) {
-    const xLabel = document.createElement("label");
-    const xText = document.createElement("span");
-    xLabel.className = "inspector-field";
-    xText.textContent = xLabelText;
-    xLabel.append(xText, xControl);
-    this.container.append(xLabel);
-    return xLabel;
-  }
-
-  xTextInput(xLabelText, xValue, xOnInput) {
-    const xInput = document.createElement("input");
-    xInput.type = "text";
-    xInput.className = "text-input";
-    xInput.maxLength = 60;
-    xInput.value = xValue;
-    xInput.addEventListener("input", () => xOnInput(xInput.value));
-    this.xField(xLabelText, xInput);
-  }
-
-  xTextArea(xLabelText, xValue, xClassName, xOnInput) {
-    const xInput = document.createElement("textarea");
-    xInput.className = `text-input ${xClassName}`;
-    xInput.value = xValue;
-    xInput.addEventListener("input", () => xOnInput(xInput.value));
-    this.xField(xLabelText, xInput);
-    return xInput;
-  }
-
-  xSelect(xLabelText, xOptions, xValue, xOnChange) {
-    const xSelect = document.createElement("select");
-    xSelect.className = "text-input";
-
-    for (const [xOptionValue, xOptionText] of xOptions) {
-      xSelect.add(new Option(xOptionText, xOptionValue, false, xOptionValue === xValue));
-    }
-
-    xSelect.addEventListener("change", () => xOnChange(xSelect.value));
-    this.xField(xLabelText, xSelect);
-  }
-
-  // 選んだ音をその場で鳴らして確かめられるようにする。
-  // 一覧にない名前（後から音を減らした場合など）も、消さずに選択肢に残す。
-  xSoundSelect(xLabelText, xOptions, xValue, xOnChange) {
-    const xAll = xOptions.some(([xName]) => xName === xValue) ? xOptions : [...xOptions, [xValue, xValue]];
-
-    this.xSelect(xLabelText, xAll, xValue, (xName) => {
-      fsPlaySound(xName);
-      xOnChange(xName);
-    });
-  }
-
-  xCheckbox(xLabelText, xChecked, xOnChange) {
-    const xInput = document.createElement("input");
-    xInput.type = "checkbox";
-    xInput.checked = xChecked;
-    xInput.addEventListener("change", () => xOnChange(xInput.checked));
-    this.xField(xLabelText, xInput).classList.add("is-checkbox");
-  }
-
-  xRectInputs(xPart, xCardSize) {
-    const xGroup = document.createElement("fieldset");
-    const xLegend = document.createElement("legend");
-    const xLimits = {
-      left: () => [0, xCardSize.width - xPart.width],
-      top: () => [0, xCardSize.height - xPart.height],
-      width: () => [MIN_PART_SIZE, xCardSize.width - xPart.left],
-      height: () => [MIN_PART_SIZE, xCardSize.height - xPart.top]
-    };
-    const xLabels = { left: "X", top: "Y", width: "幅", height: "高さ" };
-
-    xGroup.className = "inspector-rect";
-    xLegend.textContent = "位置と大きさ";
-    xGroup.append(xLegend);
-
-    for (const xKey of Object.keys(xLabels)) {
-      const xLabel = document.createElement("label");
-      const xInput = document.createElement("input");
-
-      xInput.type = "number";
-      xInput.inputMode = "numeric";
-      xInput.className = "text-input";
-      xInput.value = xPart[xKey];
-      xInput.addEventListener("change", () => {
-        const [xMin, xMax] = xLimits[xKey]();
-        const xNumber = Math.round(Number(xInput.value));
-        xPart[xKey] = Number.isFinite(xNumber) ? Math.min(Math.max(xMin, xNumber), xMax) : xPart[xKey];
-        xInput.value = xPart[xKey];
-        this.handlers.onChange(true);
-      });
-
-      xLabel.append(xLabels[xKey], xInput);
-      xGroup.append(xLabel);
-    }
-
-    this.container.append(xGroup);
-  }
-
-  // スクリプト欄。入力のたびに構文を確かめ、誤りがあれば下に表示する。
-  xScriptInput(xLabelText, xOwner) {
-    const xInput = this.xTextArea(xLabelText, xOwner.script ?? "", "script-input", (xValue) => {
-      xOwner.script = xValue;
-      xShowCheck();
-      this.handlers.onChange(false);
-    });
-    const xMessage = document.createElement("p");
-
-    xInput.spellcheck = false;
-    xInput.setAttribute("autocapitalize", "off");
-    xInput.setAttribute("autocomplete", "off");
-    xInput.setAttribute("autocorrect", "off");
-    xInput.wrap = "off";
-    xMessage.className = "script-check";
-    xMessage.setAttribute("aria-live", "polite");
-
-    const xShowCheck = () => {
-      const xError = fsCheckScript(xInput.value);
-      xMessage.textContent = xError || "構文OK";
-      xMessage.classList.toggle("is-error", Boolean(xError));
-    };
-
-    xShowCheck();
-    this.container.append(xMessage);
+  focusDefaultButton() {
+    this.footer.querySelector(`.${DIALOG_CLASS.defaultButton}`).focus({ preventScroll: true });
   }
 }

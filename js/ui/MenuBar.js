@@ -6,32 +6,56 @@
  * menus: [{ title, visible?(), items: [{ label, action, enabled?(), checked?(), visible?() } | "-"] }]
  * visible が false のメニュー・項目は出さない。状態が変わったら update() を呼ぶ。
  */
+// メニュー定義の区切り線。
+export const MENU_SEPARATOR = "-";
+
+// 描き方。PC はメニューバー、スマホは「☰」で開く一覧。
+export const MENU_MODE = { pc: "pc", mobile: "mobile" };
+
+// choose の結果。スクリプトの doMenu はこれを見て、選べなかったときにエラーを出す。
+export const MENU_CHOICE = { done: "done", missing: "missing", disabled: "disabled" };
+
+// どのメニューも開いていない。
+const NO_MENU_OPEN = -1;
+
+// タイトルの要素の data-title の値。setTitle で中身を差し替える。
+const TITLE_KIND = { main: "main", sub: "sub" };
+
+// doMenu の名前は、末尾の「…」「...」を省いてもよい。
+const fsNormalizeMenuLabel = (xText) => xText.trim().replace(/(…|\.\.\.)$/, "");
+
+const fsIsSeparator = (xItem) => xItem === MENU_SEPARATOR;
+
 export class MenuBar {
   constructor(xRoot, xMenus) {
     this.root = xRoot;
     this.menus = xMenus;
-    this.mode = "pc";
-    this.openIndex = -1;
+    this.mode = MENU_MODE.pc;
+    this.openIndex = NO_MENU_OPEN;
     this.title = "";
     this.subtitle = "";
     this.visibleKey = "";
 
     document.addEventListener("pointerdown", (xEvent) => {
-      if (this.openIndex >= 0 && !this.root.contains(xEvent.target)) {
+      if (this.isOpen && !this.root.contains(xEvent.target)) {
         this.close();
       }
     });
 
     document.addEventListener("keydown", (xEvent) => {
-      if (xEvent.key === "Escape" && this.openIndex >= 0) {
+      if (xEvent.key === "Escape" && this.isOpen) {
         this.close();
       }
     });
   }
 
+  get isOpen() {
+    return this.openIndex !== NO_MENU_OPEN;
+  }
+
   setMode(xMode) {
     this.mode = xMode;
-    this.openIndex = -1;
+    this.openIndex = NO_MENU_OPEN;
     this.render();
   }
 
@@ -40,16 +64,14 @@ export class MenuBar {
     this.subtitle = xSubtitle;
 
     for (const xElement of this.root.querySelectorAll("[data-title]")) {
-      xElement.textContent = xElement.dataset.title === "main" ? xTitle : xSubtitle;
+      xElement.textContent = xElement.dataset.title === TITLE_KIND.main ? xTitle : xSubtitle;
     }
   }
 
   // 出すメニューが変わったときだけ描き直す（開いているメニューを閉じないため）。
   update() {
-    const xKey = this.xVisibleMenus().map(({ xIndex }) => xIndex).join(",");
-
-    if (xKey !== this.visibleKey) {
-      this.openIndex = -1;
+    if (this.visibleMenusKey() !== this.visibleKey) {
+      this.openIndex = NO_MENU_OPEN;
       this.render();
     }
   }
@@ -58,38 +80,43 @@ export class MenuBar {
   // 名前の末尾の「…」「...」は省いてもよい。
   // 選べたら "done"、見つからなければ "missing"、選べない状態なら "disabled" を返す。
   choose(xLabel) {
-    const fsNormalize = (xText) => xText.trim().replace(/(…|\.\.\.)$/, "");
+    const xWanted = fsNormalizeMenuLabel(xLabel);
     const xItem = this.menus
       .flatMap((xMenu) => xMenu.items)
-      .find((xEntry) => xEntry !== "-" && fsNormalize(xEntry.label) === fsNormalize(xLabel));
+      .find((xEntry) => !fsIsSeparator(xEntry) && fsNormalizeMenuLabel(xEntry.label) === xWanted);
 
     if (!xItem) {
-      return "missing";
+      return MENU_CHOICE.missing;
     }
 
     if (!(xItem.enabled?.() ?? true)) {
-      return "disabled";
+      return MENU_CHOICE.disabled;
     }
 
     this.close();
     xItem.action();
-    return "done";
+    return MENU_CHOICE.done;
   }
 
   // 出すメニューと、その元の番号。項目が1つも出ないメニューも出さない。
-  xVisibleMenus() {
+  visibleMenus() {
     return this.menus
-      .map((xMenu, xIndex) => ({ xMenu, xIndex }))
-      .filter(({ xMenu }) => (xMenu.visible?.() ?? true) && this.xVisibleItems(xMenu.items).length > 0);
+      .map((xMenu, xIndex) => ({ menu: xMenu, index: xIndex }))
+      .filter(({ menu: xMenu }) => (xMenu.visible?.() ?? true) && this.visibleItems(xMenu.items).length > 0);
+  }
+
+  // 出しているメニューの組み合わせ。変わったときだけ描き直すのに使う。
+  visibleMenusKey() {
+    return this.visibleMenus().map(({ index: xIndex }) => xIndex).join(",");
   }
 
   // 出す項目。隠した項目のせいで区切り線が先頭・末尾・続けて並ばないようにする。
-  xVisibleItems(xItems) {
+  visibleItems(xItems) {
     const xResult = [];
 
     for (const xItem of xItems) {
-      if (xItem === "-") {
-        if (xResult.length > 0 && xResult.at(-1) !== "-") {
+      if (fsIsSeparator(xItem)) {
+        if (xResult.length > 0 && !fsIsSeparator(xResult.at(-1))) {
           xResult.push(xItem);
         }
       } else if (xItem.visible?.() ?? true) {
@@ -97,7 +124,7 @@ export class MenuBar {
       }
     }
 
-    if (xResult.at(-1) === "-") {
+    if (fsIsSeparator(xResult.at(-1))) {
       xResult.pop();
     }
 
@@ -111,35 +138,36 @@ export class MenuBar {
   }
 
   close() {
-    this.openIndex = -1;
+    this.openIndex = NO_MENU_OPEN;
     this.render();
   }
 
   render() {
     this.root.replaceChildren();
-    this.visibleKey = this.xVisibleMenus().map(({ xIndex }) => xIndex).join(",");
+    this.visibleKey = this.visibleMenusKey();
 
-    if (this.mode === "mobile") {
-      this.xRenderMobile();
+    if (this.mode === MENU_MODE.mobile) {
+      this.renderMobile();
     } else {
-      this.xRenderPc();
+      this.renderPc();
     }
   }
 
-  xTitleElement(xTag, xKind, xClassName) {
+  // スタック名（main）と、カードの位置など（sub）を出す要素。
+  createTitleElement(xTag, xKind, xClassName) {
     const xElement = document.createElement(xTag);
     xElement.className = xClassName;
     xElement.dataset.title = xKind;
-    xElement.textContent = xKind === "main" ? this.title : this.subtitle;
+    xElement.textContent = xKind === TITLE_KIND.main ? this.title : this.subtitle;
     return xElement;
   }
 
-  xRenderPc() {
+  renderPc() {
     const xNav = document.createElement("nav");
     xNav.className = "menubar-menus";
     xNav.setAttribute("aria-label", "メニュー");
 
-    this.xVisibleMenus().forEach(({ xMenu, xIndex }) => {
+    this.visibleMenus().forEach(({ menu: xMenu, index: xIndex }) => {
       const xWrapper = document.createElement("div");
       const xTitle = document.createElement("button");
       const xIsOpen = xIndex === this.openIndex;
@@ -154,7 +182,7 @@ export class MenuBar {
 
       // どれかのメニューが開いている間は、見出しに触れるだけで切り替える（Macと同じ）。
       xTitle.addEventListener("pointerenter", () => {
-        if (this.openIndex >= 0 && this.openIndex !== xIndex) {
+        if (this.isOpen && this.openIndex !== xIndex) {
           this.open(xIndex);
         }
       });
@@ -162,8 +190,8 @@ export class MenuBar {
       xWrapper.append(xTitle);
 
       if (xIsOpen) {
-        const xDropdown = this.xBuildDropdown();
-        this.xAppendItems(xDropdown, xMenu.items);
+        const xDropdown = this.createDropdown();
+        this.appendItems(xDropdown, xMenu.items);
         xWrapper.append(xDropdown);
       }
 
@@ -172,20 +200,21 @@ export class MenuBar {
 
     this.root.append(
       xNav,
-      this.xTitleElement("span", "main", "menubar-stack"),
-      this.xTitleElement("span", "sub", "menubar-card")
+      this.createTitleElement("span", TITLE_KIND.main, "menubar-stack"),
+      this.createTitleElement("span", TITLE_KIND.sub, "menubar-card")
     );
   }
 
-  xRenderMobile() {
+  // スマホでは、どのメニューを開いても、すべてのメニューを見出し付きで1つの一覧に並べる。
+  renderMobile() {
     const xTitles = document.createElement("div");
     const xTrigger = document.createElement("button");
-    const xIsOpen = this.openIndex >= 0;
+    const xIsOpen = this.isOpen;
 
     xTitles.className = "menubar-titles";
     xTitles.append(
-      this.xTitleElement("strong", "main", "menubar-stack"),
-      this.xTitleElement("span", "sub", "menubar-card")
+      this.createTitleElement("strong", TITLE_KIND.main, "menubar-stack"),
+      this.createTitleElement("span", TITLE_KIND.sub, "menubar-card")
     );
 
     xTrigger.type = "button";
@@ -199,31 +228,31 @@ export class MenuBar {
     this.root.append(xTitles, xTrigger);
 
     if (xIsOpen) {
-      const xDropdown = this.xBuildDropdown();
+      const xDropdown = this.createDropdown();
       xDropdown.classList.add("is-mobile");
 
-      for (const { xMenu } of this.xVisibleMenus()) {
+      for (const { menu: xMenu } of this.visibleMenus()) {
         const xHeading = document.createElement("div");
         xHeading.className = "menu-section-title";
         xHeading.textContent = xMenu.title;
         xDropdown.append(xHeading);
-        this.xAppendItems(xDropdown, xMenu.items);
+        this.appendItems(xDropdown, xMenu.items);
       }
 
       this.root.append(xDropdown);
     }
   }
 
-  xBuildDropdown() {
+  createDropdown() {
     const xDropdown = document.createElement("div");
     xDropdown.className = "menu-dropdown";
     xDropdown.setAttribute("role", "menu");
     return xDropdown;
   }
 
-  xAppendItems(xDropdown, xItems) {
-    for (const xItem of this.xVisibleItems(xItems)) {
-      if (xItem === "-") {
+  appendItems(xDropdown, xItems) {
+    for (const xItem of this.visibleItems(xItems)) {
+      if (fsIsSeparator(xItem)) {
         const xSeparator = document.createElement("div");
         xSeparator.className = "menu-separator";
         xSeparator.setAttribute("role", "separator");

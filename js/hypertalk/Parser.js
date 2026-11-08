@@ -1,251 +1,132 @@
-import { ScriptError, fsTokenizeScript } from "./Lexer.js";
+/*
+ * スクリプトを読み、ハンドラ（on 〜 end）と関数（function 〜 end）の構文木にする。
+ * 式とオブジェクトの指定は ExpressionParser が読む。
+ */
+import { ExpressionParser } from "./ExpressionParser.js";
+import { fsTokenizeScript } from "./Lexer.js";
+import { ScriptError } from "./ScriptError.js";
+import { CONTAINER_KIND, EXPRESSION_KIND, REPEAT_MODE, STATEMENT_KIND, TOKEN_TYPE } from "./ScriptNodes.js";
+import { TokenStream } from "./TokenStream.js";
+import {
+  EFFECT_SPEED,
+  EXIT_TO_NAMES,
+  MISPLACED_STATEMENT_WORDS,
+  PUT_PREPOSITION,
+  VERY_WORD,
+  VISUAL_EFFECT_NAMES,
+  WAIT_UNIT,
+  WAIT_UNIT_WORDS,
+  WIPE_DIRECTIONS
+} from "./ScriptVocabulary.js";
 
-const CONSTANTS = {
-  empty: "",
-  true: true,
-  false: false,
-  return: "\n",
-  space: " ",
-  tab: "\t",
-  quote: "\"",
-  comma: ","
+const HANDLER_KIND = { message: "on", function: "function" };
+
+// 行の頭の語（語でないトークンは null）。
+const fsLeadingWords = (xTokens) => {
+  return xTokens.map((xToken) => (xToken.type === TOKEN_TYPE.word ? xToken.word : null));
 };
 
-const CHUNK_UNITS = {
-  char: "char",
-  character: "char",
-  word: "word",
-  line: "line",
-  item: "item"
+// 「end 名前」の行か。
+const fsIsEndLine = (xTokens, xLowerName) => {
+  const xWords = fsLeadingWords(xTokens);
+  return xWords[0] === "end" && xWords[1] === xLowerName;
 };
 
-const COUNT_UNITS = {
-  chars: "char",
-  characters: "char",
-  words: "word",
-  lines: "line",
-  items: "item"
+const fsIsElseLine = (xTokens) => {
+  return fsLeadingWords(xTokens)[0] === "else";
 };
 
-const PART_TYPES = {
-  field: "field",
-  fld: "field",
-  button: "button",
-  btn: "button"
+// 命令の語と、それを読むメソッドの名前。ここにない語は、自作のハンドラを呼ぶ命令として読む。
+const STATEMENT_PARSERS = {
+  put: "parsePut",
+  get: "parseGet",
+  go: "parseGo",
+  visual: "parseVisualEffect",
+  answer: "parseAnswer",
+  ask: "parseAsk",
+  beep: "parseBeep",
+  play: "parsePlay",
+  domenu: "parseDoMenu",
+  open: "parseOpenUrl",
+  wait: "parseWait",
+  hide: "parseVisibility",
+  show: "parseVisibility",
+  set: "parseSet",
+  add: "parseAddOrSubtract",
+  subtract: "parseAddOrSubtract",
+  multiply: "parseMultiplyOrDivide",
+  divide: "parseMultiplyOrDivide",
+  global: "parseGlobal",
+  return: "parseReturn",
+  pass: "parsePass",
+  exit: "parseExit",
+  next: "parseNextRepeat",
+  send: "parseSend"
 };
 
-const PART_COUNTS = {
-  fields: "field",
-  flds: "field",
-  buttons: "button",
-  btns: "button"
-};
-
-const CARD_WORDS = new Set(["card", "cd"]);
-const BG_WORDS = new Set(["bg", "bkgnd", "background"]);
-
-// 部品の前の「card」「bg」から、どちらの層の部品かを決める。何もなければ "auto"。
-const fsLayerOf = (xWord) => {
-  if (CARD_WORDS.has(xWord)) {
-    return "card";
-  }
-
-  return BG_WORDS.has(xWord) ? "background" : "auto";
-};
-const ORDINALS = { next: "next", prev: "prev", previous: "prev", first: "first", last: "last" };
-const RESERVED = new Set(["then", "else", "end"]);
-
-// 「the X of」のXのうち、オブジェクトのプロパティとして扱うもの。
-export const PROPERTIES = new Set([
-  "name", "label", "text", "visible", "locktext", "clickable", "sharedtext", "style", "textsize", "textalign", "scrollbar", "sound",
-  "left", "top", "width", "height", "id", "number", "script"
-]);
-
-// 1行分のトークンを順に読む。
-class TokenStream {
-  constructor(xTokens, xLine) {
-    this.tokens = xTokens;
-    this.pos = 0;
-    this.line = xLine;
-  }
-
-  atEnd() {
-    return this.pos >= this.tokens.length;
-  }
-
-  peek(xOffset = 0) {
-    return this.tokens[this.pos + xOffset];
-  }
-
-  next() {
-    return this.tokens[this.pos++];
-  }
-
-  peekWord(xOffset = 0) {
-    const xToken = this.peek(xOffset);
-    return xToken?.t === "word" ? xToken.w : null;
-  }
-
-  isWord(...xWords) {
-    const xWord = this.peekWord();
-    return xWord !== null && xWords.includes(xWord);
-  }
-
-  acceptWord(...xWords) {
-    if (this.isWord(...xWords)) {
-      return this.next().w;
-    }
-
-    return null;
-  }
-
-  expectWord(...xWords) {
-    const xWord = this.acceptWord(...xWords);
-
-    if (!xWord) {
-      this.fail(`「${xWords[0]}」が必要です。`);
-    }
-
-    return xWord;
-  }
-
-  isOp(...xOps) {
-    const xToken = this.peek();
-    return xToken?.t === "op" && xOps.includes(xToken.v);
-  }
-
-  acceptOp(...xOps) {
-    if (this.isOp(...xOps)) {
-      return this.next().v;
-    }
-
-    return null;
-  }
-
-  expectOp(xOp) {
-    if (!this.acceptOp(xOp)) {
-      this.fail(`「${xOp}」が必要です。`);
-    }
-  }
-
-  expectName(xWhat) {
-    const xToken = this.peek();
-
-    if (xToken?.t !== "word") {
-      this.fail(`${xWhat}が必要です。`);
-    }
-
-    this.next();
-    return xToken.v;
-  }
-
-  expectEnd() {
-    if (!this.atEnd()) {
-      this.fail(`「${this.describe(this.peek())}」の位置が正しくありません。`);
-    }
-  }
-
-  describe(xToken) {
-    if (!xToken) {
-      return "";
-    }
-
-    return xToken.t === "str" ? `"${xToken.v}"` : String(xToken.v);
-  }
-
-  fail(xMessage) {
-    throw new ScriptError(xMessage, this.line);
-  }
-}
-
-// 「word」「line」などは変数名にも使えるため、後ろに位置の指定が続くときだけチャンクとみなす。
-const NOT_CHUNK_FOLLOWERS = new Set([
-  "into", "after", "before", "then", "else", "and", "or", "is", "contains",
-  "to", "of", "in", "with", "mod", "div", "from", "by"
-]);
-
-const fsLooksLikeChunk = (xStream) => {
-  if (!CHUNK_UNITS[xStream.peekWord()]) {
-    return false;
-  }
-
-  const xNext = xStream.peek(1);
-
-  if (!xNext) {
-    return false;
-  }
-
-  if (xNext.t === "num" || xNext.t === "str") {
-    return true;
-  }
-
-  if (xNext.t === "op") {
-    return xNext.v === "(" || xNext.v === "-";
-  }
-
-  return !NOT_CHUNK_FOLLOWERS.has(xNext.w);
-};
-
-const fsFirstWords = (xTokens) => {
-  return xTokens.map((xToken) => (xToken.t === "word" ? xToken.w : null));
-};
-
-const fsIsEnd = (xTokens, xName) => {
-  const xWords = fsFirstWords(xTokens);
-  return xWords[0] === "end" && xWords[1] === xName;
-};
-
-const fsIsElse = (xTokens) => {
-  return fsFirstWords(xTokens)[0] === "else";
-};
-
-class ScriptParser {
+class ScriptParser extends ExpressionParser {
   constructor(xLines) {
+    super();
     this.lines = xLines;
     this.index = 0;
   }
 
+  // { handlers, functions }（どちらも 小文字の名前 → { name, params, body, line } の Map）を返す。
   parseScript() {
     const xHandlers = new Map();
     const xFunctions = new Map();
 
     while (this.index < this.lines.length) {
-      const xLine = this.lines[this.index++];
-      const xStream = new TokenStream(xLine.tokens, xLine.line);
-      const xKind = xStream.acceptWord("on", "function");
-
-      if (!xKind) {
-        xStream.fail("「on」か「function」で始めてください。");
-      }
-
-      const xName = xStream.expectName("ハンドラ名");
-      const xParams = [];
-
-      while (!xStream.atEnd()) {
-        xParams.push(xStream.expectName("引数名").toLowerCase());
-
-        if (!xStream.atEnd()) {
-          xStream.expectOp(",");
-        }
-      }
-
-      const xLower = xName.toLowerCase();
-      const xBody = this.parseBlock(
-        (xTokens) => fsIsEnd(xTokens, xLower),
-        `end ${xName}`,
-        xLine.line
-      );
-
+      const xHeaderLine = this.lines[this.index];
       this.index += 1;
-      (xKind === "on" ? xHandlers : xFunctions).set(xLower, {
-        name: xName,
-        params: xParams,
-        body: xBody,
-        line: xLine.line
-      });
+      const xHandler = this.parseHandler(xHeaderLine);
+      const xTable = xHandler.kind === HANDLER_KIND.message ? xHandlers : xFunctions;
+      xTable.set(xHandler.name.toLowerCase(), xHandler.definition);
     }
 
     return { handlers: xHandlers, functions: xFunctions };
+  }
+
+  // 「on 名前 引数, …」から「end 名前」までを読む。
+  parseHandler(xHeaderLine) {
+    const xStream = this.streamOf(xHeaderLine);
+    const xKind = xStream.acceptWord(HANDLER_KIND.message, HANDLER_KIND.function);
+
+    if (!xKind) {
+      xStream.fail("「on」か「function」で始めてください。");
+    }
+
+    const xName = xStream.expectName("ハンドラ名");
+    const xParams = this.parseParameterNames(xStream);
+    const xLowerName = xName.toLowerCase();
+    const xBody = this.parseBlock((xTokens) => fsIsEndLine(xTokens, xLowerName), `end ${xName}`, xHeaderLine.line);
+
+    // 「end 名前」の行を読み飛ばす。
+    this.index += 1;
+
+    return {
+      kind: xKind,
+      name: xName,
+      definition: { name: xName, params: xParams, body: xBody, line: xHeaderLine.line }
+    };
+  }
+
+  parseParameterNames(xStream) {
+    const xParams = [];
+
+    while (!xStream.atEnd()) {
+      xParams.push(xStream.expectName("引数名").toLowerCase());
+
+      if (!xStream.atEnd()) {
+        xStream.expectOperator(",");
+      }
+    }
+
+    return xParams;
+  }
+
+  streamOf(xLine) {
+    return new TokenStream(xLine.tokens, xLine.line);
   }
 
   // 終わりの行（isTerminator が true の行）の手前まで読む。終わりの行は読み進めない。
@@ -269,7 +150,7 @@ class ScriptParser {
   }
 
   parseLine(xLine) {
-    const xStream = new TokenStream(xLine.tokens, xLine.line);
+    const xStream = this.streamOf(xLine);
 
     if (xStream.acceptWord("if")) {
       return this.parseIf(xStream);
@@ -279,59 +160,71 @@ class ScriptParser {
       return this.parseRepeat(xStream);
     }
 
-    const xStatement = this.parseSimple(xStream);
+    const xStatement = this.parseSimpleStatement(xStream);
     xStream.expectEnd();
     return xStatement;
   }
 
+  // ---- if ----
+
   parseIf(xStream) {
     const xLine = xStream.line;
-    const xCondition = this.parseExpr(xStream);
+    const xCondition = this.parseExpression(xStream);
     xStream.expectWord("then");
 
-    // 1行の if：if 条件 then 文 [else 文]
-    if (!xStream.atEnd()) {
-      const xThen = [this.parseSimple(xStream)];
-      let xElse = [];
-
-      if (xStream.acceptWord("else")) {
-        xElse = this.parseElse(xStream);
-      } else {
-        xStream.expectEnd();
-
-        if (this.index < this.lines.length && fsIsElse(this.lines[this.index].tokens)) {
-          const xElseLine = this.lines[this.index++];
-          const xElseStream = new TokenStream(xElseLine.tokens, xElseLine.line);
-          xElseStream.next();
-          xElse = this.parseElse(xElseStream);
-        }
-      }
-
-      return { k: "if", line: xLine, cond: xCondition, then: xThen, else: xElse };
+    if (xStream.atEnd()) {
+      return this.parseBlockIf(xLine, xCondition);
     }
 
-    const xIsEndIf = (xTokens) => fsIsEnd(xTokens, "if");
-    const xThen = this.parseBlock(
-      (xTokens) => fsIsElse(xTokens) || xIsEndIf(xTokens),
+    return this.parseSingleLineIf(xStream, xLine, xCondition);
+  }
+
+  // if 条件 then 文 [else 文]。else は次の行に書いてもよい。
+  parseSingleLineIf(xStream, xLine, xCondition) {
+    const xThenStatements = [this.parseSimpleStatement(xStream)];
+    let xElseStatements = [];
+
+    if (xStream.acceptWord("else")) {
+      xElseStatements = this.parseElse(xStream);
+    } else {
+      xStream.expectEnd();
+
+      if (this.index < this.lines.length && fsIsElseLine(this.lines[this.index].tokens)) {
+        // else の後に複数行が続くときは、else の次の行から読むので、先に else の行を読み進める。
+        const xElseLine = this.lines[this.index];
+        this.index += 1;
+        xElseStatements = this.parseElseLine(xElseLine);
+      }
+    }
+
+    return this.ifStatement(xLine, xCondition, xThenStatements, xElseStatements);
+  }
+
+  // if 条件 then の後に、複数行の文と [else …] end if が続く形。
+  parseBlockIf(xLine, xCondition) {
+    const xThenStatements = this.parseBlock(
+      (xTokens) => fsIsElseLine(xTokens) || fsIsEndLine(xTokens, "if"),
       "end if",
       xLine
     );
-    const xNextLine = this.lines[this.index++];
-    let xElse = [];
-
-    if (fsIsElse(xNextLine.tokens)) {
-      const xElseStream = new TokenStream(xNextLine.tokens, xNextLine.line);
-      xElseStream.next();
-      xElse = this.parseElse(xElseStream);
-    }
-
-    return { k: "if", line: xLine, cond: xCondition, then: xThen, else: xElse };
+    // 閉じた行（else か end if）を読み進めてから、else なら続きを読む。
+    const xClosingLine = this.lines[this.index];
+    this.index += 1;
+    const xElseStatements = fsIsElseLine(xClosingLine.tokens) ? this.parseElseLine(xClosingLine) : [];
+    return this.ifStatement(xLine, xCondition, xThenStatements, xElseStatements);
   }
 
-  // 「else」の直後から読む。
+  // 「else …」の行を、else の後から読む。
+  parseElseLine(xLine) {
+    const xStream = this.streamOf(xLine);
+    xStream.next();
+    return this.parseElse(xStream);
+  }
+
+  // 「else」の直後から読む。行末なら end if までの複数行、else if なら内側の if、それ以外は1つの文。
   parseElse(xStream) {
     if (xStream.atEnd()) {
-      const xBody = this.parseBlock((xTokens) => fsIsEnd(xTokens, "if"), "end if", xStream.line);
+      const xBody = this.parseBlock((xTokens) => fsIsEndLine(xTokens, "if"), "end if", xStream.line);
       this.index += 1;
       return xBody;
     }
@@ -341,45 +234,63 @@ class ScriptParser {
       return [this.parseIf(xStream)];
     }
 
-    const xStatement = this.parseSimple(xStream);
+    const xStatement = this.parseSimpleStatement(xStream);
     xStream.expectEnd();
     return [xStatement];
   }
 
-  parseRepeat(xStream) {
-    const xNode = { k: "repeat", line: xStream.line, mode: "forever" };
-
-    if (xStream.atEnd() || xStream.acceptWord("forever")) {
-      xNode.mode = "forever";
-    } else if (xStream.acceptWord("while")) {
-      xNode.mode = "while";
-      xNode.cond = this.parseExpr(xStream);
-    } else if (xStream.acceptWord("until")) {
-      xNode.mode = "until";
-      xNode.cond = this.parseExpr(xStream);
-    } else if (xStream.acceptWord("with")) {
-      xNode.mode = "with";
-      xNode.variable = xStream.expectName("変数名").toLowerCase();
-      xStream.expectOp("=");
-      xNode.from = this.parseAdd(xStream);
-      xNode.down = Boolean(xStream.acceptWord("down"));
-      xStream.expectWord("to");
-      xNode.to = this.parseAdd(xStream);
-    } else {
-      xStream.acceptWord("for");
-      xNode.mode = "count";
-      xNode.count = this.parseAdd(xStream);
-      xStream.acceptWord("times");
-    }
-
-    xStream.expectEnd();
-    xNode.body = this.parseBlock((xTokens) => fsIsEnd(xTokens, "repeat"), "end repeat", xStream.line);
-    this.index += 1;
-    return xNode;
+  ifStatement(xLine, xCondition, xThenStatements, xElseStatements) {
+    return {
+      kind: STATEMENT_KIND.if,
+      line: xLine,
+      condition: xCondition,
+      thenStatements: xThenStatements,
+      elseStatements: xElseStatements
+    };
   }
 
-  parseSimple(xStream) {
-    const xLine = xStream.line;
+  // ---- repeat ----
+
+  parseRepeat(xStream) {
+    const xStatement = { kind: STATEMENT_KIND.repeat, line: xStream.line, ...this.parseRepeatMode(xStream) };
+    xStream.expectEnd();
+    xStatement.body = this.parseBlock((xTokens) => fsIsEndLine(xTokens, "repeat"), "end repeat", xStream.line);
+    this.index += 1;
+    return xStatement;
+  }
+
+  // repeat [forever] / while 条件 / until 条件 / with i = 1 [down] to 10 / [for] 5 [times]。
+  parseRepeatMode(xStream) {
+    if (xStream.atEnd() || xStream.acceptWord("forever")) {
+      return { mode: REPEAT_MODE.forever };
+    }
+
+    if (xStream.acceptWord("while")) {
+      return { mode: REPEAT_MODE.while, condition: this.parseExpression(xStream) };
+    }
+
+    if (xStream.acceptWord("until")) {
+      return { mode: REPEAT_MODE.until, condition: this.parseExpression(xStream) };
+    }
+
+    if (xStream.acceptWord("with")) {
+      const xVariable = xStream.expectName("変数名").toLowerCase();
+      xStream.expectOperator("=");
+      const xFrom = this.parseAddition(xStream);
+      const xDown = Boolean(xStream.acceptWord("down"));
+      xStream.expectWord("to");
+      return { mode: REPEAT_MODE.with, variable: xVariable, from: xFrom, down: xDown, to: this.parseAddition(xStream) };
+    }
+
+    xStream.acceptWord("for");
+    const xCount = this.parseAddition(xStream);
+    xStream.acceptWord("times");
+    return { mode: REPEAT_MODE.count, count: xCount };
+  }
+
+  // ---- 1行の文 ----
+
+  parseSimpleStatement(xStream) {
     const xWord = xStream.peekWord();
 
     if (!xWord) {
@@ -388,573 +299,235 @@ class ScriptParser {
 
     xStream.next();
 
-    switch (xWord) {
-      case "put": {
-        const xValue = this.parseExpr(xStream);
-        const xPrep = xStream.acceptWord("into", "after", "before");
-        const xDest = xPrep ? this.parseContainer(xStream) : { k: "msg" };
-        return { k: "put", line: xLine, value: xValue, prep: xPrep ?? "into", dest: xDest };
-      }
-
-      case "get":
-        return { k: "get", line: xLine, value: this.parseExpr(xStream) };
-
-      case "go": {
-        xStream.acceptWord("to");
-
-        if (xStream.acceptWord("back")) {
-          return { k: "go", line: xLine, back: true };
-        }
-
-        // go stack "stacks/reference"。このページと同じ場所にあるスタックのファイルを開く。
-        if (xStream.acceptWord("stack")) {
-          if (!this.xHasArgument(xStream)) {
-            throw new ScriptError("go stack のあとに開くスタックのパスを書いてください（例：go stack \"stacks/reference\"）。", xLine);
-          }
-
-          return { k: "goStack", line: xLine, path: this.parseExpr(xStream) };
-        }
-
-        return { k: "go", line: xLine, ref: this.parseCardTarget(xStream) };
-      }
-
-      // visual effect wipe left [very fast|fast|slow|very slow]。次の go に効果を付ける。
-      case "visual": {
-        xStream.acceptWord("effect");
-        let xName = xStream.acceptWord("dissolve", "plain");
-
-        if (!xName && xStream.acceptWord("wipe")) {
-          xName = `wipe ${xStream.expectWord("left", "right")}`;
-        }
-
-        if (!xName) {
-          xStream.fail("使える効果は wipe left / wipe right / dissolve / plain です。");
-        }
-
-        let xSpeed = "normal";
-
-        if (xStream.acceptWord("very")) {
-          xSpeed = `very ${xStream.expectWord("fast", "slow")}`;
-        } else {
-          xSpeed = xStream.acceptWord("fast", "slow") ?? "normal";
-        }
-
-        return { k: "visual", line: xLine, effect: { name: xName, speed: xSpeed } };
-      }
-
-      case "answer": {
-        const xValue = this.parseExpr(xStream);
-        const xButtons = [];
-
-        if (xStream.acceptWord("with")) {
-          do {
-            xButtons.push(this.parseConcat(xStream));
-          } while (xStream.acceptWord("or"));
-        }
-
-        return { k: "answer", line: xLine, value: xValue, buttons: xButtons };
-      }
-
-      case "ask": {
-        const xValue = this.parseExpr(xStream);
-        const xDefault = xStream.acceptWord("with") ? this.parseExpr(xStream) : null;
-        return { k: "ask", line: xLine, value: xValue, def: xDefault };
-      }
-
-      case "beep":
-        return {
-          k: "beep",
-          line: xLine,
-          count: this.xHasArgument(xStream) ? this.parseExpr(xStream) : null
-        };
-
-      // play "chime"。音の名前は式で書ける。
-      case "play":
-        if (!this.xHasArgument(xStream)) {
-          throw new ScriptError("play のあとに音の名前を書いてください（例：play \"chime\"）。", xLine);
-        }
-
-        return { k: "play", line: xLine, sound: this.parseExpr(xStream) };
-
-      // doMenu "サンプルを開く"。メニュー項目の名前は式で書ける。
-      case "domenu":
-        if (!this.xHasArgument(xStream)) {
-          throw new ScriptError("doMenu のあとにメニュー項目の名前を書いてください（例：doMenu \"開く…\"）。", xLine);
-        }
-
-        return { k: "doMenu", line: xLine, label: this.parseExpr(xStream) };
-
-      // open url "https://example.com"。URL は式で書ける。
-      case "open":
-        if (!xStream.acceptWord("url") || !this.xHasArgument(xStream)) {
-          throw new ScriptError("open url のあとに開くURLを書いてください（例：open url \"https://example.com\"）。", xLine);
-        }
-
-        return { k: "openUrl", line: xLine, url: this.parseExpr(xStream) };
-
-      case "wait": {
-        xStream.acceptWord("for");
-        const xAmount = this.parseAdd(xStream);
-        let xUnit = "tick";
-
-        if (xStream.acceptWord("seconds", "second", "secs", "sec")) {
-          xUnit = "sec";
-        } else if (xStream.acceptWord("milliseconds", "millisecond", "ms")) {
-          xUnit = "ms";
-        } else {
-          xStream.acceptWord("ticks", "tick");
-        }
-
-        return { k: "wait", line: xLine, amount: xAmount, unit: xUnit };
-      }
-
-      case "hide":
-      case "show":
-        return { k: xWord, line: xLine, ref: this.parseObjRef(xStream, true) };
-
-      case "set": {
-        xStream.acceptWord("the");
-        const xProp = xStream.expectName("プロパティ名").toLowerCase();
-        xStream.expectWord("of");
-        const xRef = this.parseObjRef(xStream, true);
-        xStream.expectWord("to");
-        return { k: "set", line: xLine, prop: xProp, ref: xRef, value: this.parseExpr(xStream) };
-      }
-
-      case "add":
-      case "subtract": {
-        const xValue = this.parseExpr(xStream);
-        xStream.expectWord(xWord === "add" ? "to" : "from");
-        return { k: "math", line: xLine, op: xWord, value: xValue, dest: this.parseContainer(xStream) };
-      }
-
-      case "multiply":
-      case "divide": {
-        const xDest = this.parseContainer(xStream);
-        xStream.expectWord("by");
-        return { k: "math", line: xLine, op: xWord, value: this.parseExpr(xStream), dest: xDest };
-      }
-
-      case "global": {
-        const xNames = [];
-
-        do {
-          xNames.push(xStream.expectName("変数名").toLowerCase());
-        } while (xStream.acceptOp(","));
-
-        return { k: "global", line: xLine, names: xNames };
-      }
-
-      case "return":
-        return {
-          k: "return",
-          line: xLine,
-          value: this.xHasArgument(xStream) ? this.parseExpr(xStream) : { k: "lit", v: "" }
-        };
-
-      case "pass":
-        xStream.expectName("メッセージ名");
-        return { k: "pass", line: xLine };
-
-      case "exit":
-        if (xStream.acceptWord("repeat")) {
-          return { k: "exitRepeat", line: xLine };
-        }
-
-        if (xStream.acceptWord("to")) {
-          if (!xStream.acceptWord("hycarperd")) {
-            xStream.expectWord("hypercard");
-          }
-
-          return { k: "exitAll", line: xLine };
-        }
-
-        xStream.expectName("ハンドラ名");
-        return { k: "exit", line: xLine };
-
-      case "next":
-        xStream.expectWord("repeat");
-        return { k: "nextRepeat", line: xLine };
-
-      case "send": {
-        const xMessage = this.parseConcat(xStream);
-        const xRef = xStream.acceptWord("to") ? this.parseObjRef(xStream, true) : null;
-        return { k: "send", line: xLine, message: xMessage, ref: xRef };
-      }
-
-      case "end":
-      case "else":
-      case "then":
-      case "on":
-      case "function":
-        return xStream.fail(`「${xWord}」の位置が正しくありません。`);
-
-      default: {
-        const xArgs = [];
-
-        if (this.xHasArgument(xStream)) {
-          do {
-            xArgs.push(this.parseExpr(xStream));
-          } while (xStream.acceptOp(","));
-        }
-
-        return { k: "command", line: xLine, name: xWord, args: xArgs };
-      }
+    if (MISPLACED_STATEMENT_WORDS.has(xWord)) {
+      return xStream.fail(`「${xWord}」の位置が正しくありません。`);
     }
+
+    const xMethodName = STATEMENT_PARSERS[xWord];
+
+    if (xMethodName) {
+      return { line: xStream.line, ...this[xMethodName](xStream, xWord) };
+    }
+
+    return { kind: STATEMENT_KIND.command, line: xStream.line, name: xWord, args: this.parseCommandArguments(xStream) };
   }
 
-  xHasArgument(xStream) {
+  // 行末か else の手前なら、引数は書かれていない。
+  hasArgument(xStream) {
     return !xStream.atEnd() && !xStream.isWord("else");
   }
 
-  // put の書き込み先など、値を入れられる場所。
-  parseContainer(xStream) {
-    if (xStream.acceptWord("msg", "message")) {
-      xStream.acceptWord("box");
-      return { k: "msg" };
+  // 引数が必要な命令で、引数がなければ書き方の例を添えて知らせる。
+  expectArgument(xStream, xMessage) {
+    if (!this.hasArgument(xStream)) {
+      xStream.fail(xMessage);
     }
-
-    if (fsLooksLikeChunk(xStream)) {
-      xStream.fail("文字や単語の一部への書き込みは、まだ使えません。");
-    }
-
-    const xRef = this.parseObjRef(xStream, false);
-
-    if (xRef) {
-      return xRef;
-    }
-
-    return { k: "var", name: xStream.expectName("書き込み先").toLowerCase() };
   }
 
-  parseCardTarget(xStream) {
-    const xOrdinal = ORDINALS[xStream.peekWord()];
+  parseCommandArguments(xStream) {
+    const xArgs = [];
 
-    if (xOrdinal) {
-      xStream.next();
-      xStream.acceptWord("card", "cd");
-      return { k: "ref", type: "card", which: xOrdinal };
+    if (!this.hasArgument(xStream)) {
+      return xArgs;
     }
 
-    const xRef = this.parseObjRef(xStream, false);
+    do {
+      xArgs.push(this.parseExpression(xStream));
+    } while (xStream.acceptOperator(","));
 
-    if (xRef?.type === "card") {
-      return xRef;
-    }
-
-    return xStream.fail("移動先のカードを指定してください。");
+    return xArgs;
   }
 
-  // オブジェクトの指定を読む。required が false で見つからなければ null。
-  parseObjRef(xStream, xRequired) {
-    const xWord = xStream.peekWord();
-    const xNext = xStream.peekWord(1);
+  // put 値 [into|after|before 書き込み先]。書き込み先を省くとメッセージボックスへ。
+  parsePut(xStream) {
+    const xValue = this.parseExpression(xStream);
+    const xPreposition = xStream.acceptWord(PUT_PREPOSITION.into, PUT_PREPOSITION.after, PUT_PREPOSITION.before);
+    const xDestination = xPreposition ? this.parseContainer(xStream) : { kind: CONTAINER_KIND.message };
+    return { kind: STATEMENT_KIND.put, value: xValue, preposition: xPreposition ?? PUT_PREPOSITION.into, destination: xDestination };
+  }
 
-    if (xWord === "me") {
-      xStream.next();
-      return { k: "ref", type: "me" };
+  parseGet(xStream) {
+    return { kind: STATEMENT_KIND.get, value: this.parseExpression(xStream) };
+  }
+
+  // go [to] back / go [to] stack パス / go [to] カード。
+  parseGo(xStream) {
+    xStream.acceptWord("to");
+
+    if (xStream.acceptWord("back")) {
+      return { kind: STATEMENT_KIND.goBack };
     }
 
-    if (xWord === "the" && xNext === "target") {
-      xStream.next();
-      xStream.next();
-      return { k: "ref", type: "target" };
+    if (xStream.acceptWord("stack")) {
+      this.expectArgument(xStream, "go stack のあとに開くスタックのパスを書いてください（例：go stack \"stacks/reference\"）。");
+      return { kind: STATEMENT_KIND.goStack, path: this.parseExpression(xStream) };
     }
 
-    if (xWord === "this" && (CARD_WORDS.has(xNext) || BG_WORDS.has(xNext) || xNext === "stack")) {
-      xStream.next();
-      xStream.next();
+    return { kind: STATEMENT_KIND.go, target: this.parseCardTarget(xStream) };
+  }
 
-      if (BG_WORDS.has(xNext)) {
-        return { k: "ref", type: "background" };
+  // visual [effect] wipe left|right / dissolve / plain [[very] fast|slow]。次の go に効果を付ける。
+  parseVisualEffect(xStream) {
+    xStream.acceptWord("effect");
+    let xName = xStream.acceptWord(VISUAL_EFFECT_NAMES.dissolve, VISUAL_EFFECT_NAMES.plain);
+
+    if (!xName && xStream.acceptWord(VISUAL_EFFECT_NAMES.wipe)) {
+      xName = `${VISUAL_EFFECT_NAMES.wipe} ${xStream.expectWord(...WIPE_DIRECTIONS)}`;
+    }
+
+    if (!xName) {
+      xStream.fail("使える効果は wipe left / wipe right / dissolve / plain です。");
+    }
+
+    return { kind: STATEMENT_KIND.visualEffect, effect: { name: xName, speed: this.parseEffectSpeed(xStream) } };
+  }
+
+  parseEffectSpeed(xStream) {
+    if (xStream.acceptWord(VERY_WORD)) {
+      return `${VERY_WORD} ${xStream.expectWord(EFFECT_SPEED.fast, EFFECT_SPEED.slow)}`;
+    }
+
+    return xStream.acceptWord(EFFECT_SPEED.fast, EFFECT_SPEED.slow) ?? EFFECT_SPEED.normal;
+  }
+
+  // answer 文 [with ボタン or ボタン …]。ボタンの名前は or で区切るので、連結までの式として読む。
+  parseAnswer(xStream) {
+    const xPrompt = this.parseExpression(xStream);
+    const xButtons = [];
+
+    if (xStream.acceptWord("with")) {
+      do {
+        xButtons.push(this.parseConcatenation(xStream));
+      } while (xStream.acceptWord("or"));
+    }
+
+    return { kind: STATEMENT_KIND.answer, prompt: xPrompt, buttons: xButtons };
+  }
+
+  parseAsk(xStream) {
+    const xPrompt = this.parseExpression(xStream);
+    const xDefaultValue = xStream.acceptWord("with") ? this.parseExpression(xStream) : null;
+    return { kind: STATEMENT_KIND.ask, prompt: xPrompt, defaultValue: xDefaultValue };
+  }
+
+  parseBeep(xStream) {
+    return { kind: STATEMENT_KIND.beep, count: this.hasArgument(xStream) ? this.parseExpression(xStream) : null };
+  }
+
+  parsePlay(xStream) {
+    this.expectArgument(xStream, "play のあとに音の名前を書いてください（例：play \"chime\"）。");
+    return { kind: STATEMENT_KIND.play, sound: this.parseExpression(xStream) };
+  }
+
+  parseDoMenu(xStream) {
+    this.expectArgument(xStream, "doMenu のあとにメニュー項目の名前を書いてください（例：doMenu \"開く…\"）。");
+    return { kind: STATEMENT_KIND.doMenu, label: this.parseExpression(xStream) };
+  }
+
+  parseOpenUrl(xStream) {
+    if (!xStream.acceptWord("url") || !this.hasArgument(xStream)) {
+      xStream.fail("open url のあとに開くURLを書いてください（例：open url \"https://example.com\"）。");
+    }
+
+    return { kind: STATEMENT_KIND.openUrl, url: this.parseExpression(xStream) };
+  }
+
+  // wait [for] 量 [seconds|milliseconds|ticks]。単位を省くと tick（60分の1秒）。
+  parseWait(xStream) {
+    xStream.acceptWord("for");
+    const xAmount = this.parseAddition(xStream);
+    let xUnit = WAIT_UNIT.tick;
+
+    if (xStream.acceptWord(...WAIT_UNIT_WORDS.second)) {
+      xUnit = WAIT_UNIT.second;
+    } else if (xStream.acceptWord(...WAIT_UNIT_WORDS.millisecond)) {
+      xUnit = WAIT_UNIT.millisecond;
+    } else {
+      xStream.acceptWord(...WAIT_UNIT_WORDS.tick);
+    }
+
+    return { kind: STATEMENT_KIND.wait, amount: xAmount, unit: xUnit };
+  }
+
+  // hide / show オブジェクト。
+  parseVisibility(xStream, xWord) {
+    return { kind: STATEMENT_KIND[xWord], reference: this.parseObjectReference(xStream, true) };
+  }
+
+  // set [the] プロパティ of オブジェクト to 値。
+  parseSet(xStream) {
+    xStream.acceptWord("the");
+    const xProperty = xStream.expectName("プロパティ名").toLowerCase();
+    xStream.expectWord("of");
+    const xReference = this.parseObjectReference(xStream, true);
+    xStream.expectWord("to");
+    return { kind: STATEMENT_KIND.set, property: xProperty, reference: xReference, value: this.parseExpression(xStream) };
+  }
+
+  // add 値 to 書き込み先 / subtract 値 from 書き込み先。
+  parseAddOrSubtract(xStream, xWord) {
+    const xValue = this.parseExpression(xStream);
+    xStream.expectWord(xWord === "add" ? "to" : "from");
+    return { kind: STATEMENT_KIND.arithmetic, operation: xWord, value: xValue, destination: this.parseContainer(xStream) };
+  }
+
+  // multiply 書き込み先 by 値 / divide 書き込み先 by 値。
+  parseMultiplyOrDivide(xStream, xWord) {
+    const xDestination = this.parseContainer(xStream);
+    xStream.expectWord("by");
+    return { kind: STATEMENT_KIND.arithmetic, operation: xWord, value: this.parseExpression(xStream), destination: xDestination };
+  }
+
+  parseGlobal(xStream) {
+    const xNames = [];
+
+    do {
+      xNames.push(xStream.expectName("変数名").toLowerCase());
+    } while (xStream.acceptOperator(","));
+
+    return { kind: STATEMENT_KIND.global, names: xNames };
+  }
+
+  parseReturn(xStream) {
+    const xValue = this.hasArgument(xStream)
+      ? this.parseExpression(xStream)
+      : { kind: EXPRESSION_KIND.literal, value: "" };
+    return { kind: STATEMENT_KIND.return, value: xValue };
+  }
+
+  parsePass(xStream) {
+    xStream.expectName("メッセージ名");
+    return { kind: STATEMENT_KIND.pass };
+  }
+
+  // exit repeat / exit to HyperCard（HycarPerd も可）/ exit ハンドラ名。
+  parseExit(xStream) {
+    if (xStream.acceptWord("repeat")) {
+      return { kind: STATEMENT_KIND.exitRepeat };
+    }
+
+    if (xStream.acceptWord("to")) {
+      if (!xStream.acceptWord(...EXIT_TO_NAMES)) {
+        xStream.expectWord("hypercard");
       }
 
-      return { k: "ref", type: xNext === "stack" ? "stack" : "card", which: "this" };
+      return { kind: STATEMENT_KIND.exitToTop };
     }
 
-    if (ORDINALS[xWord] && CARD_WORDS.has(xNext)) {
-      xStream.next();
-      xStream.next();
-      return { k: "ref", type: "card", which: ORDINALS[xWord] };
-    }
-
-    // card field / bg button など。前に何もなければ、カード→背景の順に探す。
-    let xLayer = "auto";
-
-    if (fsLayerOf(xWord) !== "auto" && PART_TYPES[xNext]) {
-      xLayer = fsLayerOf(xWord);
-      xStream.next();
-    }
-
-    const xPartType = PART_TYPES[xStream.peekWord()];
-
-    if (xPartType) {
-      xStream.next();
-      return { k: "ref", type: xPartType, layer: xLayer, which: this.parsePrimary(xStream) };
-    }
-
-    if (BG_WORDS.has(xWord)) {
-      xStream.next();
-      return { k: "ref", type: "background" };
-    }
-
-    if (CARD_WORDS.has(xWord)) {
-      xStream.next();
-      const xOrdinal = ORDINALS[xStream.peekWord()];
-
-      if (xOrdinal) {
-        xStream.next();
-        return { k: "ref", type: "card", which: xOrdinal };
-      }
-
-      return { k: "ref", type: "card", which: this.parsePrimary(xStream) };
-    }
-
-    if (xRequired) {
-      xStream.fail("ボタン・フィールド・カードなどを指定してください。");
-    }
-
-    return null;
+    xStream.expectName("ハンドラ名");
+    return { kind: STATEMENT_KIND.exitHandler };
   }
 
-  // ---- 式（優先順位の低い順） ----
-
-  parseExpr(xStream) {
-    return this.parseOr(xStream);
+  parseNextRepeat(xStream) {
+    xStream.expectWord("repeat");
+    return { kind: STATEMENT_KIND.nextRepeat };
   }
 
-  parseOr(xStream) {
-    let xLeft = this.parseAnd(xStream);
-
-    while (xStream.acceptWord("or")) {
-      xLeft = { k: "bin", op: "or", a: xLeft, b: this.parseAnd(xStream) };
-    }
-
-    return xLeft;
-  }
-
-  parseAnd(xStream) {
-    let xLeft = this.parseCompare(xStream);
-
-    while (xStream.acceptWord("and")) {
-      xLeft = { k: "bin", op: "and", a: xLeft, b: this.parseCompare(xStream) };
-    }
-
-    return xLeft;
-  }
-
-  parseCompare(xStream) {
-    let xLeft = this.parseConcat(xStream);
-
-    while (true) {
-      let xOp = xStream.acceptOp("=", "<>", "≠", "<", ">", "<=", ">=", "≤", "≥");
-
-      if (xOp) {
-        xOp = { "≠": "<>", "≤": "<=", "≥": ">=" }[xOp] ?? xOp;
-      } else if (xStream.acceptWord("is")) {
-        const xNot = Boolean(xStream.acceptWord("not"));
-
-        if (xStream.acceptWord("in")) {
-          xOp = xNot ? "notin" : "in";
-        } else {
-          xOp = xNot ? "<>" : "=";
-        }
-      } else if (xStream.acceptWord("contains")) {
-        xOp = "contains";
-      } else {
-        return xLeft;
-      }
-
-      xLeft = { k: "bin", op: xOp, a: xLeft, b: this.parseConcat(xStream) };
-    }
-  }
-
-  parseConcat(xStream) {
-    let xLeft = this.parseAdd(xStream);
-    let xOp;
-
-    while ((xOp = xStream.acceptOp("&", "&&"))) {
-      xLeft = { k: "bin", op: xOp, a: xLeft, b: this.parseAdd(xStream) };
-    }
-
-    return xLeft;
-  }
-
-  parseAdd(xStream) {
-    let xLeft = this.parseMul(xStream);
-    let xOp;
-
-    while ((xOp = xStream.acceptOp("+", "-"))) {
-      xLeft = { k: "bin", op: xOp, a: xLeft, b: this.parseMul(xStream) };
-    }
-
-    return xLeft;
-  }
-
-  parseMul(xStream) {
-    let xLeft = this.parsePow(xStream);
-
-    while (true) {
-      const xOp = xStream.acceptOp("*", "/") ?? xStream.acceptWord("div", "mod");
-
-      if (!xOp) {
-        return xLeft;
-      }
-
-      xLeft = { k: "bin", op: xOp, a: xLeft, b: this.parsePow(xStream) };
-    }
-  }
-
-  parsePow(xStream) {
-    const xBase = this.parseUnary(xStream);
-
-    if (xStream.acceptOp("^")) {
-      return { k: "bin", op: "^", a: xBase, b: this.parsePow(xStream) };
-    }
-
-    return xBase;
-  }
-
-  parseUnary(xStream) {
-    if (xStream.acceptWord("not")) {
-      return { k: "un", op: "not", a: this.parseUnary(xStream) };
-    }
-
-    if (xStream.acceptOp("-")) {
-      return { k: "un", op: "-", a: this.parseUnary(xStream) };
-    }
-
-    return this.parsePrimary(xStream);
-  }
-
-  parsePrimary(xStream) {
-    const xToken = xStream.peek();
-
-    if (!xToken) {
-      return xStream.fail("式が途中で終わっています。");
-    }
-
-    if (xToken.t === "num" || xToken.t === "str") {
-      xStream.next();
-      return { k: "lit", v: xToken.v };
-    }
-
-    if (xToken.t === "op") {
-      if (xStream.acceptOp("(")) {
-        const xInner = this.parseExpr(xStream);
-        xStream.expectOp(")");
-        return xInner;
-      }
-
-      return xStream.fail(`「${xToken.v}」の位置が正しくありません。`);
-    }
-
-    const xWord = xToken.w;
-
-    if (RESERVED.has(xWord)) {
-      return xStream.fail(`「${xToken.v}」の前に式が必要です。`);
-    }
-
-    if (Object.hasOwn(CONSTANTS, xWord)) {
-      xStream.next();
-      return { k: "lit", v: CONSTANTS[xWord] };
-    }
-
-    if (xWord === "the") {
-      return this.parseThe(xStream);
-    }
-
-    if (fsLooksLikeChunk(xStream)) {
-      return this.parseChunk(xStream);
-    }
-
-    const xRef = this.parseObjRef(xStream, false);
-
-    if (xRef) {
-      return { k: "refval", ref: xRef };
-    }
-
-    xStream.next();
-
-    if (xStream.acceptOp("(")) {
-      const xArgs = [];
-
-      if (!xStream.acceptOp(")")) {
-        do {
-          xArgs.push(this.parseExpr(xStream));
-        } while (xStream.acceptOp(","));
-
-        xStream.expectOp(")");
-      }
-
-      return { k: "call", name: xWord, args: xArgs };
-    }
-
-    return { k: "var", name: xWord };
-  }
-
-  parseChunk(xStream) {
-    const xUnit = CHUNK_UNITS[xStream.next().w];
-    const xFrom = this.parseAdd(xStream);
-    const xTo = xStream.acceptWord("to") ? this.parseAdd(xStream) : null;
-    xStream.expectWord("of", "in");
-    return { k: "chunk", unit: xUnit, from: xFrom, to: xTo, of: this.parsePrimary(xStream) };
-  }
-
-  parseThe(xStream) {
-    xStream.next();
-    const xAdjective = xStream.acceptWord("short", "long", "abbreviated", "abbrev", "abbr");
-    const xName = xStream.expectName("「the」の後の名前").toLowerCase();
-
-    if (xName === "target") {
-      return { k: "refval", ref: { k: "ref", type: "target" } };
-    }
-
-    if (!xStream.isWord("of", "in")) {
-      return { k: "the", name: xName, adj: xAdjective };
-    }
-
-    xStream.next();
-
-    if (xName === "number") {
-      return this.parseNumberOf(xStream);
-    }
-
-    if (PROPERTIES.has(xName)) {
-      return { k: "prop", prop: xName, ref: this.parseObjRef(xStream, true) };
-    }
-
-    return { k: "call", name: xName, args: [this.parsePrimary(xStream)] };
-  }
-
-  // 「the number of」の後を読む。
-  parseNumberOf(xStream) {
-    if (xStream.acceptWord("cards", "cds")) {
-      return { k: "count", what: "card" };
-    }
-
-    let xLayer = "card";
-
-    if (fsLayerOf(xStream.peekWord()) !== "auto" && PART_COUNTS[xStream.peekWord(1)]) {
-      xLayer = fsLayerOf(xStream.next().w);
-    }
-
-    const xPart = PART_COUNTS[xStream.peekWord()];
-
-    if (xPart) {
-      xStream.next();
-      return { k: "count", what: xPart, layer: xLayer };
-    }
-
-    const xUnit = COUNT_UNITS[xStream.peekWord()];
-
-    if (xUnit) {
-      xStream.next();
-      xStream.expectWord("in", "of");
-      return { k: "count", what: xUnit, of: this.parsePrimary(xStream) };
-    }
-
-    return { k: "prop", prop: "number", ref: this.parseObjRef(xStream, true) };
+  // send メッセージ [to オブジェクト]。
+  parseSend(xStream) {
+    const xMessage = this.parseConcatenation(xStream);
+    const xReference = xStream.acceptWord("to") ? this.parseObjectReference(xStream, true) : null;
+    return { kind: STATEMENT_KIND.send, message: xMessage, reference: xReference };
   }
 }
 
@@ -962,7 +535,7 @@ export const fsParseScript = (xText) => {
   return new ScriptParser(fsTokenizeScript(xText)).parseScript();
 };
 
-// 構文の誤りがあればメッセージを、なければ空文字を返す。
+// 構文の誤りがあればメッセージを、なければ空文字を返す（スクリプトを編集する画面で使う）。
 export const fsCheckScript = (xText) => {
   try {
     fsParseScript(xText);

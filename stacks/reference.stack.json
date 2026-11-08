@@ -10,7 +10,8 @@
     "height": 480,
     "effect": "wipe",
     "beepSound": "beep",
-    "script": ""
+    "script": "",
+    "lock": "on"
   },
   "backgrounds": [
     {

@@ -1,118 +1,129 @@
-// スクリプトの誤り。行番号と、どのオブジェクトのスクリプトかを持つ。
-export class ScriptError extends Error {
-  constructor(xMessage, xLine = null) {
-    super(xMessage);
-    this.name = "ScriptError";
-    this.line = xLine;
-    this.where = null;
-  }
-}
+/*
+ * スクリプトの文字を、行ごとのトークンの並びにする。
+ */
+import { ScriptError } from "./ScriptError.js";
+import { TOKEN_TYPE } from "./ScriptNodes.js";
 
-// 長いものから順に照合する。
+// 演算子。「<=」と「<」のように頭が同じものがあるので、長いものから順に照合する。
 const OPERATORS = [
   "<=", ">=", "<>", "&&",
   "≤", "≥", "≠", "&", "+", "-", "*", "/", "^", "=", "<", ">", "(", ")", ","
 ];
 
+const WHITESPACE_PATTERN = /^\s+/;
 const WORD_PATTERN = /^[\p{L}_][\p{L}\p{N}_]*/u;
 const NUMBER_PATTERN = /^(\d+(\.\d*)?|\.\d+)/;
 
-// iOSのスマート句読点が入力した引用符も受け付ける。
+// コメントの始まり。iOSが「--」を「—」に変えて入力することがあるので、それも受け付ける。
+const COMMENT_MARKERS = ["--", "—"];
+
+// 行の途中にあると、次の行とつなげる印（オリジナルの HyperCard と同じ）。
+const LINE_CONTINUATION = "¬";
+
+// 文字列の開きと閉じの引用符。iOSのスマート句読点が入力した引用符も受け付ける。
 const QUOTE_PAIRS = { "\"": "\"", "“": "”", "”": "”", "„": "“" };
 
-const fsTokenizeLine = (xText, xLine) => {
+const LINE_BREAK_PATTERN = /\r?\n/;
+
+// 1行をトークンにする。continued はその行が次の行へ続くか。
+const fsTokenizeLine = (xText, xLineNumber) => {
   const xTokens = [];
   let xRest = xText;
   let xContinued = false;
 
-  while (xRest.length > 0) {
-    const xSpace = xRest.match(/^\s+/);
+  const fsConsume = (xLength) => {
+    xRest = xRest.slice(xLength);
+  };
 
-    if (xSpace) {
-      xRest = xRest.slice(xSpace[0].length);
+  while (xRest.length > 0) {
+    const xWhitespace = xRest.match(WHITESPACE_PATTERN);
+
+    if (xWhitespace) {
+      fsConsume(xWhitespace[0].length);
       continue;
     }
 
-    // コメント。iOSが「--」を「—」に変換する場合にも対応する。
-    if (xRest.startsWith("--") || xRest.startsWith("—")) {
+    if (COMMENT_MARKERS.some((xMarker) => xRest.startsWith(xMarker))) {
       break;
     }
 
-    if (xRest[0] === "¬") {
+    if (xRest[0] === LINE_CONTINUATION) {
       xContinued = true;
-      xRest = xRest.slice(1);
+      fsConsume(LINE_CONTINUATION.length);
       continue;
     }
 
-    const xClose = QUOTE_PAIRS[xRest[0]];
+    const xClosingQuote = QUOTE_PAIRS[xRest[0]];
 
-    if (xClose) {
-      const xEnd = xRest.indexOf(xClose, 1);
+    if (xClosingQuote) {
+      const xClosingIndex = xRest.indexOf(xClosingQuote, 1);
 
-      if (xEnd < 0) {
-        throw new ScriptError("文字列の \" が閉じていません。", xLine);
+      if (xClosingIndex < 0) {
+        throw new ScriptError("文字列の \" が閉じていません。", xLineNumber);
       }
 
-      xTokens.push({ t: "str", v: xRest.slice(1, xEnd) });
-      xRest = xRest.slice(xEnd + 1);
+      xTokens.push({ type: TOKEN_TYPE.string, value: xRest.slice(1, xClosingIndex) });
+      fsConsume(xClosingIndex + 1);
       continue;
     }
 
     const xNumber = xRest.match(NUMBER_PATTERN);
 
     if (xNumber) {
-      xTokens.push({ t: "num", v: Number(xNumber[0]) });
-      xRest = xRest.slice(xNumber[0].length);
+      xTokens.push({ type: TOKEN_TYPE.number, value: Number(xNumber[0]) });
+      fsConsume(xNumber[0].length);
       continue;
     }
 
     const xWord = xRest.match(WORD_PATTERN);
 
     if (xWord) {
-      xTokens.push({ t: "word", v: xWord[0], w: xWord[0].toLowerCase() });
-      xRest = xRest.slice(xWord[0].length);
+      xTokens.push({ type: TOKEN_TYPE.word, value: xWord[0], word: xWord[0].toLowerCase() });
+      fsConsume(xWord[0].length);
       continue;
     }
 
-    const xOperator = OPERATORS.find((xOp) => xRest.startsWith(xOp));
+    const xOperator = OPERATORS.find((xCandidate) => xRest.startsWith(xCandidate));
 
     if (xOperator) {
-      xTokens.push({ t: "op", v: xOperator });
-      xRest = xRest.slice(xOperator.length);
+      xTokens.push({ type: TOKEN_TYPE.operator, value: xOperator });
+      fsConsume(xOperator.length);
       continue;
     }
 
-    throw new ScriptError(`使えない文字があります：${xRest[0]}`, xLine);
+    throw new ScriptError(`使えない文字があります：${xRest[0]}`, xLineNumber);
   }
 
   return { tokens: xTokens, continued: xContinued };
 };
 
-// 空行を除いた行の配列を返す。「¬」で終わる行は次の行とつなげる。
+// スクリプト全体をトークンにする。{ tokens, line } の配列を返す（空行は除く）。
+// 「¬」のある行は次の行とつなげ、つないだ行の番号は最初の行のものにする。
 export const fsTokenizeScript = (xText) => {
   const xLines = [];
-  let xPending = null;
+  let xPendingLine = null;
 
-  xText.split(/\r?\n/).forEach((xRaw, xIndex) => {
-    const xResult = fsTokenizeLine(xRaw, xIndex + 1);
+  xText.split(LINE_BREAK_PATTERN).forEach((xLineText, xIndex) => {
+    const xLineNumber = xIndex + 1;
+    const xTokenized = fsTokenizeLine(xLineText, xLineNumber);
 
-    if (xPending) {
-      xPending.tokens.push(...xResult.tokens);
+    if (xPendingLine) {
+      xPendingLine.tokens.push(...xTokenized.tokens);
     } else {
-      xPending = { tokens: xResult.tokens, line: xIndex + 1 };
+      xPendingLine = { tokens: xTokenized.tokens, line: xLineNumber };
     }
 
-    if (!xResult.continued) {
-      if (xPending.tokens.length > 0) {
-        xLines.push(xPending);
+    if (!xTokenized.continued) {
+      if (xPendingLine.tokens.length > 0) {
+        xLines.push(xPendingLine);
       }
 
-      xPending = null;
+      xPendingLine = null;
     }
   });
 
-  if (xPending && xPending.tokens.length > 0) {
-    xLines.push(xPending);
+  if (xPendingLine && xPendingLine.tokens.length > 0) {
+    xLines.push(xPendingLine);
   }
 
   return xLines;

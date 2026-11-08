@@ -5,6 +5,38 @@
   --hc-desk: #e6e6e6;
   --hc-mono: "SFMono-Regular", Menlo, Consolas, "Noto Sans Mono CJK JP", monospace;
   --menubar-height: 30px;
+
+  /* 線の太さ。窓・ボタン・ダイアログの枠は太線、区切り線や細い枠は細線。 */
+  --hc-line: 2px;
+  --hc-hairline: 1px;
+  /* 窓とメニューの影（右下にずらした黒）。 */
+  --hc-window-shadow: 3px 3px 0;
+  --hc-menu-shadow: 2px 2px 0;
+  /* 角丸のボタンや部品の角の丸み。 */
+  --hc-round-radius: 10px;
+  /* 文字の大きさの段階。入力欄は、iOS が画面を拡大しない 16px 以上にする。 */
+  --font-size-l: 16px;
+  --font-size-m: 14px;
+  --font-size-s: 13px;
+  --font-size-xs: 12px;
+  /* 指で押しやすい大きさ（ボタンの最小の高さ、スマホのパレットのボタン）。 */
+  --touch-target: 44px;
+  /* 余白の段階。 */
+  --space-xs: 4px;
+  --space-s: 8px;
+  --space-m: 12px;
+  --space-l: 16px;
+  /* 部品や画像の大きさを変える、右下の四角。 */
+  --resize-handle-size: 28px;
+  /* 重なり順。ダイアログ ＞ メニュー ＞ お知らせ。 */
+  --layer-dialog: 40;
+  --layer-menubar: 20;
+  --layer-status: 15;
+  /* 幅の上限。 */
+  --workspace-max-width: 900px;
+  --message-box-max-width: 560px;
+  --dialog-max-width: 360px;
+  --info-dialog-max-width: 440px;
 }
 
 :root[data-ui="mobile"] {
@@ -55,9 +87,9 @@ textarea {
 }
 
 button {
-  min-height: 44px;
-  padding: 8px 14px;
-  border: 2px solid var(--hc-black);
+  min-height: var(--touch-target);
+  padding: var(--space-s) 14px;
+  border: var(--hc-line) solid var(--hc-black);
   border-radius: 0;
   background: var(--hc-white);
   color: var(--hc-black);
@@ -89,26 +121,26 @@ button:disabled {
   width: 100%;
   min-width: 0;
   min-height: 40px;
-  padding: 6px 8px;
-  border: 1px solid var(--hc-black);
+  padding: 6px var(--space-s);
+  border: var(--hc-hairline) solid var(--hc-black);
   border-radius: 0;
   background: var(--hc-white);
   color: var(--hc-black);
-  font-size: 16px;
+  font-size: var(--font-size-l);
 }
 
 /* ---- メニューバー ---- */
 
 .menubar {
   position: relative;
-  z-index: 20;
+  z-index: var(--layer-menubar);
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-s);
   height: var(--menubar-height);
-  padding: 0 8px;
-  border-bottom: 2px solid var(--hc-black);
+  padding: 0 var(--space-s);
+  border-bottom: var(--hc-line) solid var(--hc-black);
   background: var(--hc-white);
 }
 
@@ -126,7 +158,7 @@ button:disabled {
   min-height: 0;
   padding: 0 10px;
   border: 0;
-  font-size: 14px;
+  font-size: var(--font-size-m);
 }
 
 .menu-title[aria-expanded="true"] {
@@ -139,10 +171,10 @@ button:disabled {
   top: calc(100% + 2px);
   left: 0;
   min-width: 200px;
-  padding: 4px 0;
-  border: 1px solid var(--hc-black);
+  padding: var(--space-xs) 0;
+  border: var(--hc-hairline) solid var(--hc-black);
   background: var(--hc-white);
-  box-shadow: 2px 2px 0 var(--hc-black);
+  box-shadow: var(--hc-menu-shadow) var(--hc-black);
 }
 
 .menu-item {
@@ -152,7 +184,7 @@ button:disabled {
   min-height: 0;
   padding: 5px 20px 5px 26px;
   border: 0;
-  font-size: 14px;
+  font-size: var(--font-size-m);
   text-align: left;
   white-space: nowrap;
 }
@@ -171,8 +203,8 @@ button:disabled {
 }
 
 .menu-separator {
-  margin: 4px 0;
-  border-top: 1px dotted var(--hc-black);
+  margin: var(--space-xs) 0;
+  border-top: var(--hc-hairline) dotted var(--hc-black);
 }
 
 .menubar-stack,
@@ -205,7 +237,7 @@ button:disabled {
 
 [data-ui="pc"] .menubar-stack {
   margin-left: auto;
-  font-size: 13px;
+  font-size: var(--font-size-s);
   font-weight: bold;
 }
 
@@ -216,7 +248,7 @@ button:disabled {
 
 /* スマホ：スタック名、右端に「☰」。 */
 [data-ui="mobile"] .menubar {
-  padding: 0 0 0 12px;
+  padding: 0 0 0 var(--space-m);
 }
 
 .menubar-titles {
@@ -232,7 +264,7 @@ button:disabled {
 }
 
 .menubar-titles .menubar-card {
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .menu-trigger {
@@ -241,7 +273,7 @@ button:disabled {
   min-height: 0;
   padding: 0;
   border: 0;
-  border-left: 2px solid var(--hc-black);
+  border-left: var(--hc-line) solid var(--hc-black);
   font-size: 22px;
 }
 
@@ -259,14 +291,14 @@ button:disabled {
   overflow-y: auto;
   padding: 0 0 env(safe-area-inset-bottom);
   border: 0;
-  border-bottom: 2px solid var(--hc-black);
+  border-bottom: var(--hc-line) solid var(--hc-black);
   box-shadow: none;
 }
 
 .menu-dropdown.is-mobile .menu-item {
-  min-height: 44px;
-  padding: 10px 16px 10px 36px;
-  font-size: 16px;
+  min-height: var(--touch-target);
+  padding: 10px var(--space-l) 10px 36px;
+  font-size: var(--font-size-l);
 }
 
 .menu-dropdown.is-mobile .menu-item.is-checked::before {
@@ -274,9 +306,9 @@ button:disabled {
 }
 
 .menu-section-title {
-  padding: 10px 12px 4px;
-  border-top: 1px solid var(--hc-black);
-  font-size: 12px;
+  padding: 10px var(--space-m) var(--space-xs);
+  border-top: var(--hc-hairline) solid var(--hc-black);
+  font-size: var(--font-size-xs);
   font-weight: bold;
 }
 
@@ -290,9 +322,9 @@ button:disabled {
   display: flex;
   flex: 1;
   justify-content: center;
-  gap: 16px;
+  gap: var(--space-l);
   min-height: 0;
-  padding: 16px;
+  padding: var(--space-l);
 }
 
 .card-column {
@@ -300,10 +332,10 @@ button:disabled {
   flex: 1 1 0;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-s);
   min-width: 0;
   min-height: 0;
-  max-width: 900px;
+  max-width: var(--workspace-max-width);
 }
 
 /* カードが入る範囲。CardView がこの大きさに合わせてカードを縮小・拡大する。 */
@@ -313,7 +345,7 @@ button:disabled {
   align-self: stretch;
   justify-content: center;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-l);
   min-height: 0;
   overflow: hidden;
 }
@@ -321,13 +353,13 @@ button:disabled {
 /* スマホでは描画の道具パレットをカードの下に置く。 */
 [data-ui="mobile"] .card-area {
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-s);
 }
 
 [data-ui="mobile"] .workspace {
   flex-direction: column;
-  gap: 8px;
-  padding: 8px 8px calc(8px + env(safe-area-inset-bottom));
+  gap: var(--space-s);
+  padding: var(--space-s) var(--space-s) calc(var(--space-s) + env(safe-area-inset-bottom));
 }
 
 /* スマホの閲覧中は、左右の余白を外してカードを画面の横幅いっぱいにする（枠線は残す）。 */
@@ -344,12 +376,12 @@ button:disabled {
 /* ---- カード ---- */
 
 .card-window {
-  border: 2px solid var(--hc-black);
+  border: var(--hc-line) solid var(--hc-black);
   background: var(--hc-white);
 }
 
 [data-ui="pc"] .card-window {
-  box-shadow: 3px 3px 0 var(--hc-black);
+  box-shadow: var(--hc-window-shadow) var(--hc-black);
 }
 
 /* クラシックMacのウィンドウのような横縞のタイトルバー。 */
@@ -358,8 +390,8 @@ button:disabled {
   justify-content: center;
   align-items: center;
   height: 24px;
-  padding: 0 8px;
-  border-bottom: 2px solid var(--hc-black);
+  padding: 0 var(--space-s);
+  border-bottom: var(--hc-line) solid var(--hc-black);
   background:
     repeating-linear-gradient(
       to bottom,
@@ -371,10 +403,10 @@ button:disabled {
 
 #card-name {
   max-width: 80%;
-  padding: 0 8px;
+  padding: 0 var(--space-s);
   overflow: hidden;
   background: var(--hc-white);
-  font-size: 14px;
+  font-size: var(--font-size-m);
   font-weight: bold;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -409,14 +441,14 @@ button:disabled {
   top: 0;
   left: 0;
   transform-origin: 0 0;
-  font-size: 16px;
+  font-size: var(--font-size-l);
 }
 
 .card-content {
   position: absolute;
   inset: 0;
   margin: 0;
-  padding: 16px;
+  padding: var(--space-l);
   overflow: hidden;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -434,7 +466,7 @@ div.card-content {
   border: 0;
   background: transparent;
   color: var(--hc-black);
-  font-size: 16px;
+  font-size: var(--font-size-l);
   resize: none;
 }
 
@@ -475,11 +507,11 @@ div.card-content {
 .part {
   position: absolute;
   margin: 0;
-  border: 1px solid var(--hc-black);
+  border: var(--hc-hairline) solid var(--hc-black);
   border-radius: 0;
   background: var(--hc-white);
   color: var(--hc-black);
-  font-size: 16px;
+  font-size: var(--font-size-l);
 }
 
 .part-button {
@@ -494,11 +526,11 @@ div.card-content {
 }
 
 .part-button.style-roundrect {
-  border-radius: 10px;
+  border-radius: var(--hc-round-radius);
 }
 
 .part-field {
-  padding: 4px 6px;
+  padding: var(--space-xs) 6px;
   overflow: auto;
   line-height: 1.4;
   resize: none;
@@ -528,7 +560,7 @@ div.card-content {
 }
 
 .part.style-shadow {
-  box-shadow: 2px 2px 0 var(--hc-black);
+  box-shadow: var(--hc-menu-shadow) var(--hc-black);
 }
 
 .part.style-transparent {
@@ -580,10 +612,10 @@ div.card-content {
 .part-handle {
   display: none;
   position: absolute;
-  right: -14px;
-  bottom: -14px;
-  width: 28px;
-  height: 28px;
+  right: calc(var(--resize-handle-size) / -2);
+  bottom: calc(var(--resize-handle-size) / -2);
+  width: var(--resize-handle-size);
+  height: var(--resize-handle-size);
   border: 3px solid var(--hc-white);
   background: var(--hc-black);
   touch-action: none;
@@ -604,14 +636,14 @@ div.card-content {
 .message-box {
   flex: 0 0 auto;
   width: 100%;
-  max-width: 560px;
+  max-width: var(--message-box-max-width);
   min-height: 2.2em;
   margin: 0;
-  padding: 6px 8px;
-  border: 2px solid var(--hc-black);
+  padding: 6px var(--space-s);
+  border: var(--hc-line) solid var(--hc-black);
   background: var(--hc-white);
   font-family: var(--hc-mono);
-  font-size: 14px;
+  font-size: var(--font-size-m);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -621,31 +653,31 @@ div.card-content {
 .dialog.info-dialog {
   display: flex;
   flex-direction: column;
-  max-width: 440px;
+  max-width: var(--info-dialog-max-width);
   max-height: 100%;
   padding: 0;
 }
 
 .info-dialog h2 {
   margin: 0;
-  padding: 10px 16px;
-  border-bottom: 2px solid var(--hc-black);
-  font-size: 16px;
+  padding: 10px var(--space-l);
+  border-bottom: var(--hc-line) solid var(--hc-black);
+  font-size: var(--font-size-l);
   text-align: center;
 }
 
 .info-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--space-m);
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--space-l);
 }
 
 .info-footer {
-  padding: 14px 16px;
-  border-top: 1px solid var(--hc-black);
+  padding: 14px var(--space-l);
+  border-top: var(--hc-hairline) solid var(--hc-black);
 }
 
 /* 削除ボタンはOKから離して左端に置く。 */
@@ -655,7 +687,7 @@ div.card-content {
 
 /* スマホでは画面いっぱいに広げ、入力しやすくする。 */
 [data-ui="mobile"] .dialog-backdrop:has(.info-dialog) {
-  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  padding: var(--space-m) var(--space-m) calc(var(--space-m) + env(safe-area-inset-bottom));
 }
 
 [data-ui="mobile"] .dialog.info-dialog {
@@ -670,8 +702,8 @@ div.card-content {
 .inspector-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 14px;
+  gap: var(--space-xs);
+  font-size: var(--font-size-m);
   font-weight: bold;
 }
 
@@ -679,7 +711,7 @@ div.card-content {
   flex-direction: row-reverse;
   justify-content: flex-end;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-s);
   font-weight: normal;
 }
 
@@ -706,11 +738,11 @@ div.card-content {
 
 .script-check {
   margin: -6px 0 0;
-  font-size: 13px;
+  font-size: var(--font-size-s);
 }
 
 .script-check.is-error {
-  padding: 4px 6px;
+  padding: var(--space-xs) 6px;
   background: var(--hc-black);
   color: var(--hc-white);
 }
@@ -720,13 +752,13 @@ div.card-content {
   grid-template-columns: repeat(4, 1fr);
   gap: 6px;
   margin: 0;
-  padding: 8px;
-  border: 1px solid var(--hc-black);
+  padding: var(--space-s);
+  border: var(--hc-hairline) solid var(--hc-black);
 }
 
 .inspector-rect legend {
-  padding: 0 4px;
-  font-size: 14px;
+  padding: 0 var(--space-xs);
+  font-size: var(--font-size-m);
   font-weight: bold;
 }
 
@@ -734,12 +766,12 @@ div.card-content {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 12px;
+  font-size: var(--font-size-xs);
 }
 
 .inspector-hint {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-s);
 }
 
 /* 取り込んだ画像を置いている枠。白い縁を付けて、黒い絵の上でも見えるようにする。 */
@@ -763,8 +795,8 @@ div.card-content {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 28px;
-  height: 28px;
+  width: var(--resize-handle-size);
+  height: var(--resize-handle-size);
   border: 3px solid var(--hc-white);
   background: var(--hc-black);
   cursor: nwse-resize;
@@ -774,6 +806,7 @@ div.card-content {
 
 /* PCはカードの左に縦に並べる。 */
 .paint-palette {
+  --palette-button-size: 40px;
   display: flex;
   flex: none;
   flex-direction: column;
@@ -783,19 +816,19 @@ div.card-content {
 
 .paint-group {
   display: grid;
-  grid-template-columns: repeat(2, 40px);
-  gap: 4px;
+  grid-template-columns: repeat(2, var(--palette-button-size));
+  gap: var(--space-xs);
 }
 
 .paint-button {
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 40px;
+  width: var(--palette-button-size);
   min-height: 0;
-  height: 40px;
+  height: var(--palette-button-size);
   padding: 0;
-  border-width: 1px;
+  border-width: var(--hc-hairline);
   /* 消しゴムのダブルタップで画面が拡大されないようにする。 */
   touch-action: manipulation;
 }
@@ -813,7 +846,7 @@ div.card-content {
 }
 
 .paint-button.is-text {
-  font-size: 13px;
+  font-size: var(--font-size-s);
 }
 
 /* 画像の取り込み中に、道具の代わりに出す調整欄。 */
@@ -828,7 +861,7 @@ div.card-content {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 13px;
+  font-size: var(--font-size-s);
   font-weight: bold;
 }
 
@@ -841,14 +874,14 @@ div.card-content {
 
 .paint-import-buttons {
   display: flex;
-  gap: 8px;
+  gap: var(--space-s);
 }
 
 .paint-import-buttons button {
   flex: 1;
-  padding: 8px 4px;
-  border-radius: 10px;
-  font-size: 14px;
+  padding: var(--space-s) var(--space-xs);
+  border-radius: var(--hc-round-radius);
+  font-size: var(--font-size-m);
 }
 
 .paint-import-buttons button.is-default {
@@ -857,27 +890,51 @@ div.card-content {
     0 0 0 4px var(--hc-black);
 }
 
-/* スマホはカードの下に横に並べ、親指で届くようにする。 */
+/* スマホはカードの下に横に並べ、親指で届くようにする。
+   カードを狭めないよう、ボタンは2段までにして、入りきらない分は横にスクロールして出す。 */
 [data-ui="mobile"] .paint-palette {
+  --palette-button-size: var(--touch-target);
+  --palette-rows: 2;
   flex-direction: row;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-wrap: nowrap;
   align-self: stretch;
-  gap: 4px 12px;
+  gap: var(--space-xs) var(--space-m);
   order: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
 }
 
+/* 入りきるときは中央に寄せる。justify-content: center だとはみ出したときに左端が切れて
+   スクロールでも見えなくなるので、両端の伸び縮みする余白で寄せる（はみ出すと幅は 0 になる）。 */
+[data-ui="mobile"] .paint-palette::before,
+[data-ui="mobile"] .paint-palette::after {
+  content: "";
+  flex: 1 0 0;
+}
+
+/* 画像や文字の取り込み中は調整欄が横幅いっぱいになるので、余白は要らない（あると間の分だけはみ出す）。 */
+[data-ui="mobile"] .paint-palette:has(> .paint-import:not([hidden]))::before,
+[data-ui="mobile"] .paint-palette:has(> .paint-import:not([hidden]))::after {
+  display: none;
+}
+
+/* 各グループは2段に並べ、増えた分は右に列を足す。 */
 [data-ui="mobile"] .paint-group {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
+  display: grid;
+  flex: none;
+  grid-template-rows: repeat(var(--palette-rows), var(--palette-button-size));
+  grid-auto-flow: column;
+  grid-auto-columns: var(--palette-button-size);
+  gap: var(--space-xs);
 }
 
 [data-ui="mobile"] .paint-import {
   display: grid;
+  flex: none;
   grid-template-columns: 1fr 1fr;
-  gap: 6px 12px;
+  gap: 6px var(--space-m);
   width: 100%;
 }
 
@@ -886,23 +943,23 @@ div.card-content {
 }
 
 [data-ui="mobile"] .paint-button {
-  width: 44px;
-  height: 44px;
+  width: var(--palette-button-size);
+  height: var(--palette-button-size);
 }
 
 /* ---- お知らせ ---- */
 
 .toast {
   position: fixed;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  bottom: calc(var(--space-l) + env(safe-area-inset-bottom));
   left: 50%;
-  z-index: 15;
+  z-index: var(--layer-status);
   max-width: calc(100% - 32px);
-  padding: 8px 14px;
+  padding: var(--space-s) 14px;
   transform: translateX(-50%);
   background: var(--hc-black);
   color: var(--hc-white);
-  font-size: 14px;
+  font-size: var(--font-size-m);
   pointer-events: none;
 }
 
@@ -917,11 +974,11 @@ div.card-content {
 .dialog-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--layer-dialog);
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 16px;
+  padding: var(--space-l);
   background: rgba(0, 0, 0, 0.5);
 }
 
@@ -933,9 +990,9 @@ div.card-content {
 /* 白と黒の二重枠で、クラシックMacのダイアログに似せる。 */
 .dialog {
   width: 100%;
-  max-width: 360px;
-  padding: 16px;
-  border: 2px solid var(--hc-black);
+  max-width: var(--dialog-max-width);
+  padding: var(--space-l);
+  border: var(--hc-line) solid var(--hc-black);
   background: var(--hc-white);
   box-shadow:
     0 0 0 3px var(--hc-white),
@@ -943,13 +1000,13 @@ div.card-content {
 }
 
 .dialog-message {
-  margin: 0 0 16px;
+  margin: 0 0 var(--space-l);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .dialog-input {
-  margin-bottom: 16px;
+  margin-bottom: var(--space-l);
 }
 
 /* 見るだけのダイアログ（スタック情報の表示など）。 */
@@ -961,8 +1018,8 @@ div.card-content {
 .dialog-facts {
   display: grid;
   grid-template-columns: max-content 1fr;
-  gap: 8px 16px;
-  margin: 0 0 16px;
+  gap: var(--space-s) var(--space-l);
+  margin: 0 0 var(--space-l);
 }
 
 .dialog-facts dt {
@@ -987,7 +1044,7 @@ div.card-content {
   display: flex;
   margin-bottom: 10px;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-s);
   white-space: nowrap;
 }
 
@@ -999,12 +1056,12 @@ div.card-content {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 12px;
+  gap: var(--space-m);
 }
 
 .dialog-buttons button {
   min-width: 80px;
-  border-radius: 10px;
+  border-radius: var(--hc-round-radius);
 }
 
 /* 既定のボタン（Enterで押される）は太い枠で囲む。 */
